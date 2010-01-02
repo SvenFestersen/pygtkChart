@@ -38,12 +38,14 @@ COLOR_AUTO = 0
 COLORS = gdk_color_list_from_file(os.sep.join([os.path.dirname(__file__), "data", "tango.color"]))
 
 #line style
+LINE_STYLE_NONE = -1
 LINE_STYLE_SOLID = 0
 LINE_STYLE_DOTTED = 1
 LINE_STYLE_DASHED = 2
 LINE_STYLE_DASHED_ASYMMETRIC = 3
 
 #point styles
+POINT_STYLE_NONE = -1
 POINT_STYLE_CIRCLE = 0
 POINT_STYLE_SQUARE = 1
 POINT_STYLE_CROSS = 2

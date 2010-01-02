@@ -128,7 +128,6 @@ def graph_draw_point_pixbuf(context, x, y, pixbuf):
     
 def graph_draw_points(context, rect, data, xrange, yrange, ppu_x, ppu_y, point_style, point_size):
     if point_style != pygtk_chart.POINT_STYLE_NONE:
-        first_point = True
         for point in data:
             x, y = point
             if not xrange[0] <= x <= xrange[1]: continue
@@ -139,6 +138,23 @@ def graph_draw_points(context, rect, data, xrange, yrange, ppu_x, ppu_y, point_s
                 graph_draw_point(context, posx, posy, point_size, point_style)
             else:
                 graph_draw_point_pixbuf(context, posx, posy, point_style)
+                
+def graph_draw_lines(context, rect, data, xrange, yrange, ppu_x, ppu_y, line_style):
+    if line_style != pygtk_chart.LINE_STYLE_NONE:
+        set_context_line_style(context, line_style)
+        first_point = True
+        for point in data:
+            x, y = point
+            if not xrange[0] <= x <= xrange[1]: continue
+            posx = rect.x + ppu_x * (x - xrange[0])
+            posy = rect.y + rect.height - ppu_y * (y - yrange[0])
+            
+            if first_point:
+                context.move_to(posx, posy)
+                first_point = False
+            else:
+                context.line_to(posx, posy)
+        context.stroke()
             
     
     
@@ -157,10 +173,10 @@ class Graph(ChartObject):
                                         "line style",
                                         "The line style for the graph.",
                                         -1, 3, 0, gobject.PARAM_READWRITE),
-                        "point-style": (gobject.TYPE_INT,
+                        "point-style": (gobject.TYPE_PYOBJECT,
                                         "point style",
                                         "The point style for the graph.",
-                                        -1, 5, 0, gobject.PARAM_READWRITE),
+                                        gobject.PARAM_READWRITE),
                         "point-size": (gobject.TYPE_INT,
                                         "point size",
                                         "The point size for the graph.",
@@ -230,6 +246,7 @@ class Graph(ChartObject):
         ppu_y = float(rect.height) / abs(yrange[0] - yrange[1])
         
         context.set_source_rgb(*color_gdk_to_cairo(color))
+        graph_draw_lines(context, rect, self._data, xrange, yrange, ppu_x, ppu_y, self._line_style)                
         graph_draw_points(context, rect, self._data, xrange, yrange, ppu_x, ppu_y, self._point_style, self._point_size)                
         
     def add_point(self, point):
@@ -298,6 +315,21 @@ def chart_calculate_ranges(xrange, yrange, graphs):
             calc_yrange = (0, 1)
             
     return calc_xrange, calc_yrange
+    
+    
+def chart_calculate_tics_for_range(crange):
+    tics = []
+    delta = abs(crange[0] - crange[1])
+    exp = int(math.log10(delta))
+    
+    ten_exp = math.pow(10, exp) #store this value for performance reasons
+    
+    m = int(crange[0] / ten_exp) - 1
+    n = int(crange[1] / ten_exp) + 1
+    for i in range(m, n + 1):
+        tics.append(i * ten_exp)
+        tics.append((i + 0.5) * ten_exp)
+    return tics
 
 
 class LineChart(chart.Chart):
@@ -331,7 +363,9 @@ class LineChart(chart.Chart):
         rect = self._draw_basics(context, rect)
         
         calculated_xrange, calculated_yrange = chart_calculate_ranges(self._xrange, self._yrange, self._graphs)
-        rect = self._draw_axes(context, rect, calculated_xrange, calculated_yrange)
+        xtics = chart_calculate_tics_for_range(calculated_xrange)
+        ytics = chart_calculate_tics_for_range(calculated_yrange)
+        rect = self._draw_axes(context, rect, calculated_xrange, calculated_yrange, xtics, ytics)
         
         self._draw_graphs(context, rect, calculated_xrange, calculated_yrange)
         
@@ -357,7 +391,7 @@ class LineChart(chart.Chart):
         rect_y = int(rect.y + title_height + 2 * self._padding)
         return gtk.gdk.Rectangle(rect_x, rect_y, rect_width, rect_height)
         
-    def _draw_axes(self, context, rect, calculated_xrange, calculated_yrange):
+    def _draw_axes(self, context, rect, calculated_xrange, calculated_yrange, xtics, ytics):
         rect = self.xaxis.make_rect_label_offset(context, rect)
         rect = self.yaxis.make_rect_label_offset(context, rect)
         self.xaxis.draw(context, rect, calculated_xrange)

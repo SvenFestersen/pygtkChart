@@ -318,6 +318,10 @@ def chart_calculate_ranges(xrange, yrange, graphs):
     
     
 def chart_calculate_tics_for_range(crange):
+    """
+    This function calculates the tics that should be drawn for a given
+    range.
+    """
     tics = []
     delta = abs(crange[0] - crange[1])
     exp = int(math.log10(delta))
@@ -329,6 +333,7 @@ def chart_calculate_tics_for_range(crange):
     for i in range(m, n + 1):
         tics.append(i * ten_exp)
         tics.append((i + 0.5) * ten_exp)
+    tics = filter(lambda x: crange[0] <= x <= crange[1], tics) #filter out tics not in range (there can be one or two)
     return tics
 
 
@@ -394,8 +399,8 @@ class LineChart(chart.Chart):
     def _draw_axes(self, context, rect, calculated_xrange, calculated_yrange, xtics, ytics):
         rect = self.xaxis.make_rect_label_offset(context, rect)
         rect = self.yaxis.make_rect_label_offset(context, rect)
-        self.xaxis.draw(context, rect, calculated_xrange)
-        self.yaxis.draw(context, rect, calculated_xrange)
+        self.xaxis.draw(context, rect, calculated_xrange, xtics)
+        self.yaxis.draw(context, rect, calculated_yrange, ytics)
         
         return rect
         
@@ -425,9 +430,13 @@ class Axis(ChartObject):
     _label = ""
     _show_label = True
     _label_spacing = 3
+    _show_tics = True #make gobject property
+    _show_tic_labels = True #make gobject property
+    _tics_size = 3
     
     def __init__(self):
         super(Axis, self).__init__()
+        self.set_property("antialias", False)
         
     def do_get_property(self, property):
         if property.name == "label":
@@ -451,13 +460,24 @@ class XAxis(Axis):
         super(XAxis, self).__init__()
         self._label = "x"
     
-    def _do_draw(self, context, rect, calculated_xrange):
+    def _do_draw(self, context, rect, calculated_xrange, tics):
         self._draw_label(context, rect)
         context.set_line_width(1)
         context.set_source_rgb(0, 0, 0)
         context.move_to(rect.x, rect.y + rect.height + 0.5)
         context.rel_line_to(rect.width, 0)
         context.stroke()
+        self._draw_tics(context, rect, calculated_xrange, tics)
+        
+    def _draw_tics(self, context, rect, xrange, tics):
+        if self._show_tics:
+            ppu = float(rect.width) / abs(xrange[0] - xrange[1])
+            y = rect.y + rect.height
+            for tic in tics:
+                x = rect.x + ppu * (tic - xrange[0])
+                context.move_to(x, y)
+                context.rel_line_to(0, -self._tics_size)
+                context.stroke()
         
     def _draw_label(self, context, rect):
         if self._label and self._show_label:
@@ -484,13 +504,24 @@ class YAxis(Axis):
         super(YAxis, self).__init__()
         self._label = "y"
     
-    def _do_draw(self, context, rect, calculated_yrange):
+    def _do_draw(self, context, rect, calculated_yrange, tics):
         self._draw_label(context, rect)
         context.set_line_width(1)
         context.set_source_rgb(0, 0, 0)
         context.move_to(rect.x + 0.5, rect.y)
         context.rel_line_to(0, rect.height)
         context.stroke()
+        self._draw_tics(context, rect, calculated_yrange, tics)
+        
+    def _draw_tics(self, context, rect, yrange, tics):
+        if self._show_tics:
+            ppu = float(rect.height) / abs(yrange[0] - yrange[1])
+            x = rect.x
+            for tic in tics:
+                y = rect.y + rect.height - ppu * (tic - yrange[0])
+                context.move_to(x, y)
+                context.rel_line_to(self._tics_size, 0)
+                context.stroke()
         
     def _draw_label(self, context, rect):
         if self._label and self._show_label:

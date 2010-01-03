@@ -433,6 +433,7 @@ class Axis(ChartObject):
     _show_tics = True #make gobject property
     _show_tic_labels = True #make gobject property
     _tics_size = 3
+    _min_tic_spacing = 10
     
     def __init__(self):
         super(Axis, self).__init__()
@@ -473,11 +474,14 @@ class XAxis(Axis):
         if self._show_tics:
             ppu = float(rect.width) / abs(xrange[0] - xrange[1])
             y = rect.y + rect.height
+            last_pos = -100
             for tic in tics:
                 x = rect.x + ppu * (tic - xrange[0])
-                context.move_to(x, y)
-                context.rel_line_to(0, -self._tics_size)
-                context.stroke()
+                if abs(x - last_pos) >= self._min_tic_spacing:
+                    context.move_to(x, y)
+                    context.rel_line_to(0, -self._tics_size)
+                    context.stroke()
+                    last_pos = x
         
     def _draw_label(self, context, rect):
         if self._label and self._show_label:
@@ -517,11 +521,14 @@ class YAxis(Axis):
         if self._show_tics:
             ppu = float(rect.height) / abs(yrange[0] - yrange[1])
             x = rect.x
+            last_pos = -100
             for tic in tics:
                 y = rect.y + rect.height - ppu * (tic - yrange[0])
-                context.move_to(x, y)
-                context.rel_line_to(self._tics_size, 0)
-                context.stroke()
+                if abs(y - last_pos) >= self._min_tic_spacing:
+                    context.move_to(x, y)
+                    context.rel_line_to(self._tics_size, 0)
+                    context.stroke()
+                    last_pos = y
         
     def _draw_label(self, context, rect):
         if self._label and self._show_label:

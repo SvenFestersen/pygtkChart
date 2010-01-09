@@ -214,12 +214,10 @@ class Graph(ChartObject):
             return self._point_style
         elif property.name == "point-size":
             return self._point_size
-        elif property.name == "visible":
-            return self._show
-        elif property.name == "antialias":
-            return self._antialias
         elif property.name == "color":
             return self._color
+        else:
+            return super(Graph, self).do_get_property(property)
         
     def do_set_property(self, property, value):
         if property.name == "line-style":
@@ -278,7 +276,140 @@ class Graph(ChartObject):
         """
         Returns the xrange and the yrange of the graph.
         """
-        return self._xrange, self._yrange
+        return self.get_xrange(), self.get_yrange()
+        
+    def get_xrange(self):
+        """
+        Returns the xrange of this graph. The xrange is a pair
+        holding the minimum and the maximum x values (xmin, xmax).
+        
+        @return: pair of float
+        """
+        return self.get_property("xrange")
+        
+    def get_yrange(self):
+        """
+        Returns the yrange of this graph. The yrange is a pair
+        holding the minimum and the maximum y values (ymin, ymax).
+        
+        @return: pair of float
+        """
+        return self.get_property("yrange")
+        
+    def get_line_style(self):
+        """
+        Returns the line style for this graph.
+        
+        (getter method for property 'line-style', see setter method for
+        details)
+        
+        @return: a line style constant
+        """
+        return self.get_property("line-style")
+        
+    def set_line_style(self, style):
+        """
+        Set the line style of the graph. style has to be one of these
+        line style constants:
+         - pygtk_chart.LINE_STYLE_NONE = -1
+         - pygtk_chart.LINE_STYLE_SOLID = 0
+         - pygtk_chart.LINE_STYLE_DOTTED = 1
+         - pygtk_chart.LINE_STYLE_DASHED = 2
+         - pygtk_chart.LINE_STYLE_DASHED_ASYMMETRIC = 3
+         
+        This is the setter method for the property 'line-style'.
+        Property type: gobject.TYPE_INT
+        Property minimum value: -1
+        Property maximum value: 3
+        Property default value: 0 (pygtk_chart.LINE_STYLE_SOLID)
+        
+        @type style: a line style constant (see above)
+        """
+        
+    def get_point_style(self):
+        """
+        Returns the point style for this graph.
+        
+        (getter method for property 'point-style', see setter method for
+        details)
+        
+        @return: a point style constant, or a gtk.gdk.Pixbuf
+        """
+        return self.get_property("line-style")
+        
+    def set_point_style(self, style):
+        """
+        Set the point style of the graph. style either has to be one of
+        these point style constants:
+         - pygtk_chart.POINT_STYLE_NONE = -1
+         - pygtk_chart.POINT_STYLE_CIRCLE = 0
+         - pygtk_chart.POINT_STYLE_SQUARE = 1
+         - pygtk_chart.POINT_STYLE_CROSS = 2
+         - pygtk_chart.POINT_STYLE_TRIANGLE_UP = 3
+         - pygtk_chart.POINT_STYLE_TRIANGLE_DOWN = 4
+         - pygtk_chart.POINT_STYLE_DIAMOND = 5
+        or a gtk.gdk.Pixbuf. If style is a pixbuf, the pixbuf will be
+        drawn instead of points.
+         
+        This is the setter method for the property 'point-style'.
+        Property type: gobject.TYPE_PYOBJECT
+        Property default value: 0 (pygtk_chart.POINT_STYLE_CIRCLE)
+        
+        @type style: a point style constant or gtk.gdk.Pixbuf
+        """
+        
+    def get_point_size(self):
+        """
+        Returns the point size in pixels.
+        
+        (getter method for property 'point-size', see setter method for
+        details)
+        
+        @return: int
+        """
+        return self.get_property("point-size")
+        
+    def set_point_size(self, size):
+        """
+        Sets the radius of the datapoints in pixels. If the point style
+        is a gtk.gdk.Pixbuf, the point size does not have any effect.
+        
+        This is the setter method for the property 'point-size'.
+        Property type: gobject.TYPE_INT
+        Property minimum value: 1
+        Property maximum value: 50
+        Property default value: 2
+        
+        @param size: point size in px
+        @type size: int
+        """
+        self.set_property("point-size", size)
+        
+    def get_color(self):
+        """
+        Returns the manually set color of the graph or
+        pygtk_chart.COLOR_AUTO.
+        
+        (getter method for property 'color', see setter method for
+        details)
+        
+        @return: gtk.gdk.COLOR or pygtk_chart.COLOR_AUTO
+        """
+        return self.get_property("color")
+        
+    def set_color(self, color):
+        """
+        Set the color of the graph. color has to be a gtk.gdk.Color
+        or pygtk_chart.COLOR_AUTO.
+        
+        This is the setter method for the property 'color'.
+        Property type: gobject.TYPE_PYOBJECT
+        Property default value: pygtk_chart.COLOR_AUTO
+        
+        @param color: the color of the graph
+        @type color: gtk.gdk.Color or pygtk_chart.COLOR_AUTO
+        """
+        self.set_property("color", color)
         
 
 def chart_calculate_ranges(xrange, yrange, graphs):
@@ -470,7 +601,8 @@ class Axis(ChartObject):
             return self._tics_size
         elif property.name == "tic-format":
             return self._tic_label_format
-        super(Axis, self).do_get_property(property)
+        else:
+            return super(Axis, self).do_get_property(property)
         
     def do_set_property(self, property, value):
         if property.name == "label":

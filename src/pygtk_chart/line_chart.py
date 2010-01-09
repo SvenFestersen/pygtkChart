@@ -915,6 +915,28 @@ class YAxis(Axis):
 
 class Grid(ChartObject):
     
+    __gproperties__ = {"show-horizontal-lines": (gobject.TYPE_BOOLEAN,
+                                                "show horizontal lines",
+                                                "Sets whether to show horizontal grid lines.",
+                                                True, gobject.PARAM_READWRITE),
+                        "show-vertical-lines": (gobject.TYPE_BOOLEAN,
+                                                "show vertical lines",
+                                                "Sets whether to show vertical grid lines.",
+                                                True, gobject.PARAM_READWRITE),
+                        "line-style-horizontal": (gobject.TYPE_INT,
+                                                    "horizontal line style",
+                                                    "Style of the horizontal lines.",
+                                                    -1, 3, 0,
+                                                    gobject.PARAM_READWRITE),
+                        "line-style-vertical": (gobject.TYPE_INT,
+                                                    "vertical line style",
+                                                    "Style of the vertical lines.",
+                                                    -1, 3, 0,
+                                                    gobject.PARAM_READWRITE),
+                        "color": (gobject.TYPE_PYOBJECT, "line color",
+                                    "Color of the grid lines.",
+                                    gobject.PARAM_READWRITE)}
+                                                        
     _show_horizontal_lines = True
     _show_vertical_lines = True
     _line_style_horizontal = pygtk_chart.LINE_STYLE_DOTTED
@@ -923,6 +945,34 @@ class Grid(ChartObject):
     
     def __init__(self):
         super(Grid, self).__init__()
+        
+    def do_get_property(self, property):
+        if property.name == "show-horizontal-lines":
+            return self._show_horizontal_lines
+        elif property.name == "show-vertical-lines":
+            return self._show_vertical_lines
+        elif property.name == "line-style-horizontal":
+            return self._line_style_horizontal
+        elif property.name == "line-style-vertical":
+            return self._line_style_vertical
+        elif property.name == "color":
+            return self._color
+        else:
+            return super(Grid, self).do_get_property(property)
+            
+    def do_set_property(self, property, value):
+        if property.name == "show-horizontal-lines":
+            self._show_horizontal_lines = value
+        elif property.name == "show-vertical-lines":
+            self._show_vertical_lines = value
+        elif property.name == "line-style-horizontal":
+            self._line_style_horizontal = value
+        elif property.name == "line-style-vertical":
+            self._line_style_vertical = value
+        elif property.name == "color":
+            self._color = value
+        else:
+            super(Grid, self).do_set_property(property, value)
         
     def _do_draw(self, context, rect, xtics, ytics, xaxis, yaxis):
         context.set_source_rgb(*color_gdk_to_cairo(self._color))
@@ -940,3 +990,139 @@ class Grid(ChartObject):
                 context.move_to(rect.x + yaxis.get_tic_size(), ypos)
                 context.rel_line_to(rect.width - yaxis.get_tic_size(), 0)
                 context.stroke()
+                
+    def get_show_horizontal_lines(self):
+        """
+        Returns True if horizontal grid lines are shown.
+        
+        (getter method for property 'show-horizontal-lines', see setter
+        method for details)
+        
+        @return: boolean
+        """
+        return self.get_property("show-horizontal-lines")
+        
+    def set_show_horizontal_lines(self, show):
+        """
+        Set whether to show horizontal grid lines.
+        
+        This is the setter method for the property
+        'show-horizontal-lines'.
+        Property type: gobject.TYPE_BOOLEAN
+        Property default value: True
+        
+        @type show: boolean
+        """
+        self.set_property("show-horizontal-lines", show)
+                
+    def get_show_vertical_lines(self):
+        """
+        Returns True if vertical grid lines are shown.
+        
+        (getter method for property 'show-vertical-lines', see setter
+        method for details)
+        
+        @return: boolean
+        """
+        return self.get_property("show-vertical-lines")
+        
+    def set_show_vertical_lines(self, show):
+        """
+        Set whether to show vertical grid lines.
+        
+        This is the setter method for the property
+        'show-vertical-lines'.
+        Property type: gobject.TYPE_BOOLEAN
+        Property default value: True
+        
+        @type show: boolean
+        """
+        self.set_property("show-vertical-lines", show)
+        
+    def get_line_style_horizontal(self):
+        """
+        Returns the line style for the horizontal grid lines.
+        
+        (getter method for property 'line-style-horizontal', see setter
+        method for details)
+        
+        @return: line style constant
+        """
+        return self.get_property("line-style-horizontal")
+        
+    def set_line_style_horizontal(self, style):
+        """
+        Sets the line style for the horizontal grid lines.
+        style has to be one of the following line style constants:
+         - pygtk_chart.LINE_STYLE_NONE = -1
+         - pygtk_chart.LINE_STYLE_SOLID = 0
+         - pygtk_chart.LINE_STYLE_DOTTED = 1
+         - pygtk_chart.LINE_STYLE_DASHED = 2
+         - pygtk_chart.LINE_STYLE_DASHED_ASYMMETRIC = 3
+         
+        This is the setter method for the property
+        'line-style-horizontal'.
+        Property type: gobject.TYPE_INT
+        Property minimum value: -1
+        Property maximum value: 3
+        Property default value: 0 (pygtk_chart.LINE_STYLE_SOLID)
+        
+        @type style: a line style constant
+        """
+        self.set_property("line-style-horizontal", style)
+        
+    def get_line_style_vertical(self):
+        """
+        Returns the line style for the vertical grid lines.
+        
+        (getter method for property 'line-style-vertical', see setter
+        method for details)
+        
+        @return: line style constant
+        """
+        return self.get_property("line-style-vertical")
+        
+    def set_line_style_vertical(self, style):
+        """
+        Sets the line style for the vertical grid lines.
+        style has to be one of the following line style constants:
+         - pygtk_chart.LINE_STYLE_NONE = -1
+         - pygtk_chart.LINE_STYLE_SOLID = 0
+         - pygtk_chart.LINE_STYLE_DOTTED = 1
+         - pygtk_chart.LINE_STYLE_DASHED = 2
+         - pygtk_chart.LINE_STYLE_DASHED_ASYMMETRIC = 3
+         
+        This is the setter method for the property
+        'line-style-vertical'.
+        Property type: gobject.TYPE_INT
+        Property minimum value: -1
+        Property maximum value: 3
+        Property default value: 0 (pygtk_chart.LINE_STYLE_SOLID)
+        
+        @type style: a line style constant
+        """
+        self.set_property("line-style-vertical", style)
+        
+    def get_color(self):
+        """
+        Returns the grid color.
+        
+        (getter method for property 'color', see setter method for
+        details)
+        
+        @return: gtk.gdk.COlOR.
+        """
+        return self.get_property("color")
+        
+    def set_color(self, color):
+        """
+        Set the color of the grid.
+        
+        This is the setter method for the property 'color'.
+        Property type: gobject.TYPE_PYOBJECT
+        Property default value: gtk.gdk.color_parse('#cccccc')
+        
+        @param color: new grid color
+        @type color: gtk.gdk.Color
+        """
+        self.set_property("color", color)

@@ -423,18 +423,34 @@ class Axis(ChartObject):
                                     "The label for the axis.",
                                     "", gobject.PARAM_READWRITE),
                         "show-label": (gobject.TYPE_BOOLEAN,
-                                        "set whether to show the axis label or not",
-                                        "Set whether to show the axis label or not.",
-                                        True, gobject.PARAM_READWRITE)}
+                                        "set whether to show the axis label",
+                                        "Set whether to show the axis label.",
+                                        True, gobject.PARAM_READWRITE),
+                        "show-tics": (gobject.TYPE_BOOLEAN,
+                                        "set whether to show tics at the axis",
+                                        "Set whether to show tics at the axis.",
+                                        True, gobject.PARAM_READWRITE),
+                        "show-tic-labels": (gobject.TYPE_BOOLEAN,
+                                        "set whether to show labels at the tics",
+                                        "Set whether to show labels at the tics.",
+                                        True, gobject.PARAM_READWRITE),
+                        "tic-size": (gobject.TYPE_INT, "the tic size",
+                                        "Size of the axis' tics in px.",
+                                        1, 100, 3,
+                                        gobject.PARAM_READWRITE),
+                        "tic-format": (gobject.TYPE_PYOBJECT,
+                                        "funtion to format the tic label",
+                                        "The funtion to use to format the tic label.",
+                                        gobject.PARAM_READWRITE)}
                                     
     _label = ""
     _show_label = True
     _label_spacing = 3
-    _show_tics = True #make gobject property
-    _show_tic_labels = True #make gobject property
-    _tic_label_format = str #make gobject property
-    _tics_size = 3 #make gobject property
-    _min_tic_spacing = 10 
+    _show_tics = True
+    _show_tic_labels = True
+    _tic_label_format = str
+    _tics_size = 3
+    _min_tic_spacing = 20 
     _offset_by_tic_label = 0
     
     def __init__(self):
@@ -446,6 +462,14 @@ class Axis(ChartObject):
             return self._label
         elif property.name == "show-label":
             return self._show_label
+        elif property.name == "show-tics":
+            return self._show_tics
+        elif property.name == "show-tic-labels":
+            return self._show_tic_labels
+        elif property.name == "tic-size":
+            return self._tics_size
+        elif property.name == "tic-format":
+            return self._tic_label_format
         super(Axis, self).do_get_property(property)
         
     def do_set_property(self, property, value):
@@ -453,8 +477,163 @@ class Axis(ChartObject):
             self._label = value
         elif property.name == "show-label":
             self._show_label = value
+        elif property.name == "show-tics":
+            self._show_tics = value
+        elif property.name == "show-tic-labels":
+            self._show_tic_labels = value
+        elif property.name == "tic-size":
+            self._tics_size = value
+        elif property.name == "tic-format":
+            self._tic_label_format = value
         else:
             super(Axis, self).do_set_property(property, value)
+            
+    def get_label(self):
+        """
+        Returns the current label of the axis.
+        
+        (getter method for property 'label', see setter method for
+        details)
+        
+        @return: string
+        """
+        return self.get_property("label")
+            
+    def set_label(self, label):
+        """
+        Set the label of the axis.
+        
+        This is the setter method for the property 'label'.
+        Property type: gobject.TYPE_STRING
+        Property default value: ""
+        
+        @param label: new label
+        @type label: string
+        """
+        self.set_property("label", label)
+        
+    def get_show_label(self):
+        """
+        Return True if the axis' label is shown.
+        
+        (getter method for property 'show-label', see setter method for
+        details)
+        
+        @return: boolean
+        """
+        return self.get_property("show-label")
+        
+    def set_show_label(self, show):
+        """
+        Set whether to show the axis' label.
+        
+        This is the setter method for the property 'show-label'.
+        Property type: gobject.TYPE_BOOLEAN
+        Property default value: True
+        
+        @type show: boolean
+        """
+        self.set_property("show-label", show)
+        
+    def get_show_tics(self):
+        """
+        Return True tics are shown.
+        
+        (getter method for property 'show-tics', see setter method for
+        details)
+        
+        @return: boolean
+        """
+        return self.get_property("show-tics")
+        
+    def set_show_tics(self, show):
+        """
+        Set whether to show tics at the axis.
+        
+        This is the setter method for the property 'show-tics'.
+        Property type: gobject.TYPE_BOOLEAN
+        Property default value: True
+        
+        @type show: boolean
+        """
+        self.set_property("show-tics", show)
+        
+    def get_show_tic_labels(self):
+        """
+        Return True if labels are shown at the axis' tics.
+        
+        (getter method for property 'show-tic-labels', see setter method
+        for details)
+        
+        @return: boolean
+        """
+        return self.get_property("show-tic-labels")
+        
+    def set_show_tic_labels(self, show):
+        """
+        Set whether to show labels at the axis' tics. If the property
+        'show-tics' is False, labels are not shown regardless of what
+        value 'show-tic-labels' has.
+        
+        This is the setter method for the property 'show-tic-labels'.
+        Property type: gobject.TYPE_BOOLEAN
+        Property default value: True
+        
+        @type show: boolean
+        """
+        self.set_property("show-tic-labels", show)
+        
+    def get_tic_size(self):
+        """
+        Returns the size of the axis' tics in pixels.
+        
+        (getter method for property 'tic-size', see setter method for
+        details)
+        
+        @return: int
+        """
+        return self.get_property("tic-size")
+        
+    def set_tic_size(self, size):
+        """
+        Set the size of the axis' tics in pixels.
+        
+        This is the setter method for the property 'tic-size'.
+        Property type: gobject.TYPE_INT
+        Property minimum value: 1
+        Property maximum value: 100
+        Property default value: 3
+        
+        @param size: new size for the tics
+        @type size: interger
+        """
+        self.set_property("tic-size", size)
+        
+    def get_tic_format(self):
+        """
+        Returns the function that is used to format the tic labels.
+        
+        (getter method for property 'tic-format', see setter method for
+        details)
+        
+        @return: function
+        """
+        return self.get_property("tic-format")
+        
+    def set_tic_format(self, func):
+        """
+        Set the function to format the tic labels. The function
+        'func' has to take a float as the only argument and should
+        return a string.
+        
+        This is the setter method for the property 'tic-format'.
+        Property type: gobject.TYPE_PYOBJECT
+        Property default value: str
+        
+        @param func: new label formating function
+        @type func: function
+        """
+        self.set_property("tic-format", func)
 
 
 class XAxis(Axis):

@@ -397,8 +397,8 @@ class LineChart(chart.Chart):
         return gtk.gdk.Rectangle(rect_x, rect_y, rect_width, rect_height)
         
     def _draw_axes(self, context, rect, calculated_xrange, calculated_yrange, xtics, ytics):
-        rect = self.xaxis.make_rect_label_offset(context, rect)
-        rect = self.yaxis.make_rect_label_offset(context, rect)
+        rect = self.xaxis.make_rect_label_offset(context, rect, xtics)
+        rect = self.yaxis.make_rect_label_offset(context, rect, ytics)
         self.xaxis.draw(context, rect, calculated_xrange, xtics)
         self.yaxis.draw(context, rect, calculated_yrange, ytics)
         
@@ -432,8 +432,10 @@ class Axis(ChartObject):
     _label_spacing = 3
     _show_tics = True #make gobject property
     _show_tic_labels = True #make gobject property
-    _tics_size = 3
-    _min_tic_spacing = 10
+    _tic_label_format = str #make gobject property
+    _tics_size = 3 #make gobject property
+    _min_tic_spacing = 10 
+    _offset_by_tic_label = 0
     
     def __init__(self):
         super(Axis, self).__init__()
@@ -468,9 +470,11 @@ class XAxis(Axis):
         context.move_to(rect.x, rect.y + rect.height + 0.5)
         context.rel_line_to(rect.width, 0)
         context.stroke()
-        self._draw_tics(context, rect, calculated_xrange, tics)
+        tics_drawn_at = self._draw_tics(context, rect, calculated_xrange, tics)
+        self._draw_tic_labels(context, rect, tics_drawn_at)
         
     def _draw_tics(self, context, rect, xrange, tics):
+        tics_drawn_at = []
         if self._show_tics:
             ppu = float(rect.width) / abs(xrange[0] - xrange[1])
             y = rect.y + rect.height
@@ -482,14 +486,25 @@ class XAxis(Axis):
                     context.rel_line_to(0, -self._tics_size)
                     context.stroke()
                     last_pos = x
+                    tics_drawn_at.append((tic, x))
+        return tics_drawn_at
         
     def _draw_label(self, context, rect):
         if self._label and self._show_label:
-            pos = rect.x + rect.width / 2, rect.y + rect.height + self._label_spacing
+            pos = rect.x + rect.width / 2, rect.y + rect.height + self._offset_by_tic_label + self._label_spacing
             label_object = label.Label(pos, self._label, anchor=label.ANCHOR_TOP_CENTER)
             label_object.draw(context, rect)
-        
-    def make_rect_label_offset(self, context, rect):
+            
+    def _draw_tic_labels(self, context, rect, tics_drawn_at):
+        if self._show_tics and self._show_tic_labels:
+            posy = rect.y + rect.height + self._label_spacing
+            for x, posx in tics_drawn_at:
+                pos = (posx, posy)
+                label_object = label.Label(pos, self._tic_label_format(x), anchor=label.ANCHOR_TOP_CENTER)
+                label_object.set_fixed(True)
+                label_object.draw(context, rect)
+                
+    def make_rect_label_offset(self, context, rect, tics):
         offset = 0
         if self._label and self._show_label:
             pos = rect.x + rect.width / 2, rect.y + rect.height
@@ -497,6 +512,11 @@ class XAxis(Axis):
             label_object.set_max_width(rect.width)
             w, h = label_object.get_calculated_dimensions(context, rect)
             offset = int(h)
+        if self._show_tics and self._show_tic_labels:
+            label_object = label.Label((0, 0), self._tic_label_format(tics[0]), anchor=label.ANCHOR_TOP_LEFT)
+            w, h = label_object.get_calculated_dimensions(context, rect)
+            offset += int(h)
+            self._offset_by_tic_label = int(h) + self._label_spacing
         rect = gtk.gdk.Rectangle(rect.x, rect.y, rect.width, rect.height - offset)
         return rect
     
@@ -515,9 +535,11 @@ class YAxis(Axis):
         context.move_to(rect.x + 0.5, rect.y)
         context.rel_line_to(0, rect.height)
         context.stroke()
-        self._draw_tics(context, rect, calculated_yrange, tics)
+        tics_drawn_at = self._draw_tics(context, rect, calculated_yrange, tics)
+        self._draw_tic_labels(context, rect, tics_drawn_at)
         
     def _draw_tics(self, context, rect, yrange, tics):
+        tics_drawn_at = []
         if self._show_tics:
             ppu = float(rect.height) / abs(yrange[0] - yrange[1])
             x = rect.x
@@ -529,17 +551,28 @@ class YAxis(Axis):
                     context.rel_line_to(self._tics_size, 0)
                     context.stroke()
                     last_pos = y
+                    tics_drawn_at.append((tic, y))
+        return tics_drawn_at
         
     def _draw_label(self, context, rect):
         if self._label and self._show_label:
-            pos = rect.x - self._label_spacing, rect.y + rect.height / 2
+            pos = rect.x - self._offset_by_tic_label - self._label_spacing, rect.y + rect.height / 2
             label_object = label.Label(pos, self._label, anchor=label.ANCHOR_RIGHT_CENTER)
             label_object.set_rotation(270)
             label_object.set_wrap(False)
             label_object.set_max_width(rect.height)
             label_object.draw(context, rect)
+            
+    def _draw_tic_labels(self, context, rect, tics_drawn_at):
+        if self._show_tics and self._show_tic_labels:
+            posx = rect.x - self._label_spacing
+            for y, posy in tics_drawn_at:
+                pos = (posx, posy)
+                label_object = label.Label(pos, self._tic_label_format(y), anchor=label.ANCHOR_RIGHT_CENTER)
+                label_object.set_fixed(True)
+                label_object.draw(context, rect)
         
-    def make_rect_label_offset(self, context, rect):
+    def make_rect_label_offset(self, context, rect, tics):
         offset = 0
         if self._label and self._show_label:
             pos = rect.x, rect.y + rect.height / 2
@@ -549,5 +582,15 @@ class YAxis(Axis):
             label_object.set_max_width(rect.height)
             w, h = label_object.get_calculated_dimensions(context, rect)
             offset = int(w)
+        if self._show_tics and self._show_tic_labels:
+            m = ""
+            w = 0
+            for y in tics:
+                if len(self._tic_label_format(y)) > len(m):
+                    m = self._tic_label_format(y)
+                label_object = label.Label((0, 0), m, anchor=label.ANCHOR_TOP_LEFT)
+                w, h = label_object.get_calculated_dimensions(context, rect)
+            self._offset_by_tic_label = int(w) + self._label_spacing
+            offset += int(w)
         rect = gtk.gdk.Rectangle(rect.x + offset, rect.y, rect.width - offset, rect.height)
         return rect

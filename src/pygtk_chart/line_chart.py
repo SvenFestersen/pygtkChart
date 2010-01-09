@@ -478,6 +478,7 @@ class LineChart(chart.Chart):
         #public attributes
         self.xaxis = XAxis()
         self.yaxis = YAxis()
+        self.grid = Grid()
         #private attributes
         self._graphs = []
         
@@ -501,7 +502,8 @@ class LineChart(chart.Chart):
         calculated_xrange, calculated_yrange = chart_calculate_ranges(self._xrange, self._yrange, self._graphs)
         xtics = chart_calculate_tics_for_range(calculated_xrange)
         ytics = chart_calculate_tics_for_range(calculated_yrange)
-        rect = self._draw_axes(context, rect, calculated_xrange, calculated_yrange, xtics, ytics)
+        rect, xtics_drawn_at, ytics_drawn_at = self._draw_axes(context, rect, calculated_xrange, calculated_yrange, xtics, ytics)
+        self._draw_grid(context, rect, xtics_drawn_at, ytics_drawn_at)
         
         self._draw_graphs(context, rect, calculated_xrange, calculated_yrange)
         
@@ -530,10 +532,13 @@ class LineChart(chart.Chart):
     def _draw_axes(self, context, rect, calculated_xrange, calculated_yrange, xtics, ytics):
         rect = self.xaxis.make_rect_label_offset(context, rect, xtics)
         rect = self.yaxis.make_rect_label_offset(context, rect, ytics)
-        self.xaxis.draw(context, rect, calculated_xrange, xtics)
-        self.yaxis.draw(context, rect, calculated_yrange, ytics)
+        xtics_drawn_at = self.xaxis.draw(context, rect, calculated_xrange, xtics)
+        ytics_drawn_at = self.yaxis.draw(context, rect, calculated_yrange, ytics)
         
-        return rect
+        return rect, xtics_drawn_at, ytics_drawn_at
+        
+    def _draw_grid(self, context, rect, xtics, ytics):
+        self.grid.draw(context, rect, xtics, ytics, self.xaxis, self.yaxis)
         
     def _draw_graphs(self, context, rect, calculated_xrange, calculated_yrange):
         for i, graph in enumerate(self._graphs):
@@ -783,6 +788,7 @@ class XAxis(Axis):
         context.stroke()
         tics_drawn_at = self._draw_tics(context, rect, calculated_xrange, tics)
         self._draw_tic_labels(context, rect, tics_drawn_at)
+        return tics_drawn_at
         
     def _draw_tics(self, context, rect, xrange, tics):
         tics_drawn_at = []
@@ -848,6 +854,7 @@ class YAxis(Axis):
         context.stroke()
         tics_drawn_at = self._draw_tics(context, rect, calculated_yrange, tics)
         self._draw_tic_labels(context, rect, tics_drawn_at)
+        return tics_drawn_at
         
     def _draw_tics(self, context, rect, yrange, tics):
         tics_drawn_at = []
@@ -905,3 +912,31 @@ class YAxis(Axis):
             offset += int(w)
         rect = gtk.gdk.Rectangle(rect.x + offset, rect.y, rect.width - offset, rect.height)
         return rect
+
+class Grid(ChartObject):
+    
+    _show_horizontal_lines = True
+    _show_vertical_lines = True
+    _line_style_horizontal = pygtk_chart.LINE_STYLE_DOTTED
+    _line_style_vertical = pygtk_chart.LINE_STYLE_DOTTED
+    _color = gtk.gdk.color_parse("#cccccc")
+    
+    def __init__(self):
+        super(Grid, self).__init__()
+        
+    def _do_draw(self, context, rect, xtics, ytics, xaxis, yaxis):
+        context.set_source_rgb(*color_gdk_to_cairo(self._color))
+        #draw vertical lines
+        if self._show_vertical_lines:
+            set_context_line_style(context, self._line_style_vertical)
+            for x, xpos in xtics:
+                context.move_to(xpos, rect.y)
+                context.rel_line_to(0, rect.height - xaxis.get_tic_size())
+                context.stroke()
+        #draw horizontal lines
+        if self._show_horizontal_lines:
+            set_context_line_style(context, self._line_style_horizontal)
+            for y, ypos in ytics:
+                context.move_to(rect.x + yaxis.get_tic_size(), ypos)
+                context.rel_line_to(rect.width - yaxis.get_tic_size(), 0)
+                context.stroke()

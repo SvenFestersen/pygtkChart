@@ -420,6 +420,7 @@ class Graph(ChartObject):
         
         @type style: a point style constant or gtk.gdk.Pixbuf
         """
+        self.set_property("point-style", style)
         
     def get_point_size(self):
         """

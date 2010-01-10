@@ -648,9 +648,15 @@ class LineChart(chart.Chart):
                                         gobject.TYPE_NONE,
                                         (gobject.TYPE_PYOBJECT,
                                         gobject.TYPE_PYOBJECT))}
+                                        
+    __gproperties__ = {"mouse-over-effect": (gobject.TYPE_BOOLEAN,
+                                            "set whether to show datapoint mouse over effect",
+                                            "Set whether to show datapoint mouse over effect.",
+                                            True, gobject.PARAM_READWRITE)}
     
     _xrange = RANGE_AUTO
     _yrange = RANGE_AUTO
+    _mouse_over_effect = True
     
     def __init__(self):
         super(LineChart, self).__init__()
@@ -661,12 +667,25 @@ class LineChart(chart.Chart):
         #private attributes
         self._graphs = []
         
+    def do_get_property(self, property):
+        if property.name == "mouse-over-effect":
+            return self._mouse_over_effect
+        else:
+            return super(LineChart, self).do_get_property(property)
+            
+    def do_set_property(self, property, value):
+        if property.name == "mouse-over-effect":
+            self._mouse_over_effect = value
+        else:
+            super(LineChart, self).do_set_property(property, value)
+        
     def _cb_button_pressed(self, widget, event):
         data = chart.get_sensitive_areas(event.x, event.y)
         for graph, point in data:
             self.emit("point-clicked", graph, point)
     
     def _cb_motion_notify(self, widget, event):
+        if not self._mouse_over_effect: return
         data = chart.get_sensitive_areas(event.x, event.y)
         change = False
         for graph in self._graphs:
@@ -748,6 +767,29 @@ class LineChart(chart.Chart):
     def add_graph(self, graph):
         self._graphs.append(graph)
         self.queue_draw()
+        
+    def get_mouse_over_effect(self):
+        """
+        Returns True if a mouse over effect is shown at datapoints.
+        
+        (getter method for property 'mouse-over-effect', see setter
+        method for details)
+        
+        @return: boolean
+        """
+        return self.get_property("mouse-over-effect")
+        
+    def set_mouse_over_effect(self, mouseover):
+        """
+        Set whether to show mouse over effect at datapoints.
+        
+        This is the setter method for the property 'mouse-over-effect'.
+        Property type: gobject.TYPE_BOOLEAN
+        Property default value: True
+        
+        @type mouseover: boolean
+        """
+        self.set_property("mouse-over-effect", mouseover)
 
 
 class Axis(ChartObject):

@@ -126,7 +126,7 @@ def graph_draw_point_pixbuf(context, x, y, pixbuf):
     context.rectangle(ax, ay, w, h)
     context.fill()
     
-def graph_draw_points(context, rect, data, xrange, yrange, ppu_x, ppu_y, point_style, point_size):
+def graph_draw_points(graph, context, rect, data, xrange, yrange, ppu_x, ppu_y, point_style, point_size):
     if point_style != pygtk_chart.POINT_STYLE_NONE:
         for point in data:
             x, y = point
@@ -135,6 +135,7 @@ def graph_draw_points(context, rect, data, xrange, yrange, ppu_x, ppu_y, point_s
             posy = rect.y + rect.height - ppu_y * (y - yrange[0])
             
             if type(point_style) != gtk.gdk.Pixbuf:
+                chart.add_sensitive_area(chart.AREA_CIRCLE, (posx, posy, point_size), (graph, (x, y)))
                 graph_draw_point(context, posx, posy, point_size, point_style)
             else:
                 graph_draw_point_pixbuf(context, posx, posy, point_style)
@@ -310,7 +311,7 @@ class Graph(ChartObject):
         graph_draw_fill_to(context, rect, self._data, xrange, yrange, ppu_x, ppu_y, self._fill_to, color, self._fill_opacity)
         context.set_source_rgb(*color_gdk_to_cairo(color))
         graph_draw_lines(context, rect, self._data, xrange, yrange, ppu_x, ppu_y, self._line_style)                
-        graph_draw_points(context, rect, self._data, xrange, yrange, ppu_x, ppu_y, self._point_style, self._point_size)    
+        graph_draw_points(self, context, rect, self._data, xrange, yrange, ppu_x, ppu_y, self._point_style, self._point_size)    
         
     def get_points(self):
         return self._data
@@ -596,6 +597,11 @@ def chart_calculate_tics_for_range(crange):
 
 class LineChart(chart.Chart):
     
+    __gsignals__ = {"point-clicked": (gobject.SIGNAL_RUN_LAST,
+                                        gobject.TYPE_NONE,
+                                        (gobject.TYPE_PYOBJECT,
+                                        gobject.TYPE_PYOBJECT))}
+    
     _xrange = RANGE_AUTO
     _yrange = RANGE_AUTO
     
@@ -607,6 +613,14 @@ class LineChart(chart.Chart):
         self.grid = Grid()
         #private attributes
         self._graphs = []
+        
+    def _cb_button_pressed(self, widget, event):
+        data = chart.get_sensitive_areas(event.x, event.y)
+        for graph, pos in data:
+            self.emit("point-clicked", graph, pos)
+    
+    def _cb_motion_notify(self, widget, event):
+        pass
         
     def draw(self, context):
         """
@@ -667,6 +681,7 @@ class LineChart(chart.Chart):
         self.grid.draw(context, rect, xtics, ytics, self.xaxis, self.yaxis)
         
     def _draw_graphs(self, context, rect, calculated_xrange, calculated_yrange):
+        chart.init_sensitive_areas()
         for i, graph in enumerate(self._graphs):
             gc = graph.get_property("color")
             if gc == COLOR_AUTO:

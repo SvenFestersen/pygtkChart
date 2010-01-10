@@ -155,6 +155,45 @@ def graph_draw_lines(context, rect, data, xrange, yrange, ppu_x, ppu_y, line_sty
             else:
                 context.line_to(posx, posy)
         context.stroke()
+        
+def graph_new_constant(xmin, xmax, value):
+    data = [(xmin, value), (xmax, value)]
+    g = Graph("", data)
+    return g
+        
+def graph_draw_fill_to(context, rect, data, xrange, yrange, ppu_x, ppu_y, fill_to, color, opacity):
+    fill_graph = None
+    if type(fill_to) == Graph:
+        fill_graph = fill_to
+    elif type(fill_to) in [int, float]:
+        xmin = max(xrange[0], data[0][0])
+        xmax = min(xrange[1], data[-1][0])
+        fill_graph = graph_new_constant(xmin, xmax, fill_to)
+        
+    if fill_graph != None:
+        c = color_gdk_to_cairo(color)
+        context.set_source_rgba(c[0], c[1], c[2], opacity)
+        other_data = fill_graph.get_points()[:]
+        other_data.reverse()
+        first_point = True
+        for point in data:
+            x, y = point
+            if not xrange[0] <= x <= xrange[1]: continue
+            posx = rect.x + ppu_x * (x - xrange[0])
+            posy = rect.y + rect.height - ppu_y * (y - yrange[0])
+            
+            if first_point:
+                context.move_to(posx, posy)
+                first_point = False
+            else:
+                context.line_to(posx, posy)
+        for point in other_data:
+            x, y = point
+            if not xrange[0] <= x <= xrange[1]: continue
+            posx = rect.x + ppu_x * (x - xrange[0])
+            posy = rect.y + rect.height - ppu_y * (y - yrange[0])
+            context.line_to(posx, posy)
+        context.fill()
             
     
     
@@ -184,6 +223,15 @@ class Graph(ChartObject):
                         "color": (gobject.TYPE_PYOBJECT,
                                         "color",
                                         "Graph color.",
+                                        gobject.PARAM_READWRITE),
+                        "fill-to": (gobject.TYPE_PYOBJECT,
+                                    "fill the sapce under the graph",
+                                    "Fill the space under the graph or between two graphs.",
+                                    gobject.PARAM_READWRITE),
+                        "fill-opacity": (gobject.TYPE_FLOAT,
+                                        "opacity of the filled area",
+                                        "The opacity of filled areas.",
+                                        0.0, 1.0, 0.3,
                                         gobject.PARAM_READWRITE)}
     
     _xrange = None
@@ -192,6 +240,8 @@ class Graph(ChartObject):
     _point_style = pygtk_chart.POINT_STYLE_CIRCLE
     _point_size = 2
     _color = COLOR_AUTO
+    _fill_to = None
+    _fill_opacity = 0.3
     
     def __init__(self, name, points=[]):
         super(Graph, self).__init__()
@@ -216,6 +266,10 @@ class Graph(ChartObject):
             return self._point_size
         elif property.name == "color":
             return self._color
+        elif property.name == "fill-to":
+            return self._fill_to
+        elif property.name == "fill-opacity":
+            return self._fill_opacity
         else:
             return super(Graph, self).do_get_property(property)
         
@@ -228,6 +282,11 @@ class Graph(ChartObject):
             self._point_size = value
         elif property.name == "color":
             self._color = value
+        elif property.name == "fill-to":
+            if type(value) in [float, int, Graph]:
+                self._fill_to = value
+        elif property.name == "fill-opacity":
+            self._fill_opacity = value
         else:
             super(Graph, self).do_set_property(property, value)
         
@@ -243,9 +302,13 @@ class Graph(ChartObject):
         ppu_x = float(rect.width) / abs(xrange[0] - xrange[1])
         ppu_y = float(rect.height) / abs(yrange[0] - yrange[1])
         
+        graph_draw_fill_to(context, rect, self._data, xrange, yrange, ppu_x, ppu_y, self._fill_to, color, self._fill_opacity)
         context.set_source_rgb(*color_gdk_to_cairo(color))
         graph_draw_lines(context, rect, self._data, xrange, yrange, ppu_x, ppu_y, self._line_style)                
-        graph_draw_points(context, rect, self._data, xrange, yrange, ppu_x, ppu_y, self._point_style, self._point_size)                
+        graph_draw_points(context, rect, self._data, xrange, yrange, ppu_x, ppu_y, self._point_style, self._point_size)    
+        
+    def get_points(self):
+        return self._data
         
     def add_point(self, point):
         """
@@ -410,6 +473,63 @@ class Graph(ChartObject):
         @type color: gtk.gdk.Color or pygtk_chart.COLOR_AUTO
         """
         self.set_property("color", color)
+        
+    def get_fill_to(self):
+        """
+        If the area under the graph or bewteen is filled, this returns
+        the value or the graph to which the area is filled.
+        Otherwise None is returned.
+        
+        (getter method for property 'fill-to', see setter method for
+        details)
+        
+        @return: int, float, line_chart.Graph or None
+        """
+        return self.get_property("fill-to")
+        
+    def set_fill_to(self, fill):
+        """
+        Sets whether and how the area under the graph should be filled.
+        If fill is int or float, the area between this value and the
+        graph is filled. If fill is a line_chart.Graph, the area
+        between the two graphs if filled.
+        The area will be filled with the color of the graph and the
+        opacity set by 'fill-opacity'.
+        Set fill to None if you do not want anything filled.
+        
+        This is the setter method for the property 'fill-to'.
+        Property type: gobject.TYPE_PYOBJECT
+        Property default value: None
+        
+        @type fill: int, float, line_chart.Graph or None
+        """
+        self.set_property("fill-to", fill)
+        
+    def get_fill_opacity(self):
+        """
+        Returns the opacity of filled areas under the graph.
+        
+        (getter method for property 'fill-opacity', see setter method
+        for details)
+        
+        @return: float
+        """
+        return self.get_property("fill-opacity")
+        
+    def set_fill_opacity(self, opacity):
+        """
+        Set the opacity of filled areas under the graph.
+        
+        This is the setter method for the property 'fill-opacity'.
+        Property type: gobject.TYPE_FLOAT
+        Property minimum value: 0.0
+        Property maximum value: 1.0
+        Property default value: 0.3
+        
+        @type opacity: float
+        """
+        self.set_property("fill-opacity", opacity)
+        
         
 
 def chart_calculate_ranges(xrange, yrange, graphs):

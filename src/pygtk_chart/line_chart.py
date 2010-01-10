@@ -703,7 +703,11 @@ class Axis(ChartObject):
                         "tic-format": (gobject.TYPE_PYOBJECT,
                                         "funtion to format the tic label",
                                         "The funtion to use to format the tic label.",
-                                        gobject.PARAM_READWRITE)}
+                                        gobject.PARAM_READWRITE),
+                        "show-other-side": (gobject.TYPE_BOOLEAN,
+                                            "also draw axis on the opposite side",
+                                            "Set whether to also draw axis on theopposite side.",
+                                            True, gobject.PARAM_READWRITE)}
                                     
     _label = ""
     _show_label = True
@@ -714,6 +718,7 @@ class Axis(ChartObject):
     _tics_size = 3
     _min_tic_spacing = 20 
     _offset_by_tic_label = 0
+    _show_other_side = True
     
     def __init__(self):
         super(Axis, self).__init__()
@@ -732,6 +737,8 @@ class Axis(ChartObject):
             return self._tics_size
         elif property.name == "tic-format":
             return self._tic_label_format
+        elif property.name == "show-other-side":
+            return self._show_other_side
         else:
             return super(Axis, self).do_get_property(property)
         
@@ -748,6 +755,8 @@ class Axis(ChartObject):
             self._tics_size = value
         elif property.name == "tic-format":
             self._tic_label_format = value
+        elif property.name == "show-other-side":
+            self._show_other_side = value
         else:
             super(Axis, self).do_set_property(property, value)
             
@@ -897,6 +906,29 @@ class Axis(ChartObject):
         @type func: function
         """
         self.set_property("tic-format", func)
+        
+    def get_show_other_side(self):
+        """
+        Returns True if axis is also drawn at the opposite side.
+        
+        (getter method for property 'show-other-side', see setter method
+        for details)
+        
+        @return: boolean
+        """
+        return self.get_property("show-other-side")
+        
+    def set_show_other_side(self, show):
+        """
+        Set whether the axis should also be drawn at the opposite side.
+        
+        This is the setter method for the property 'show-other-side'.
+        Property type: gobject.TYPE_BOOLEAN
+        Property default value: True
+        
+        @type show: boolean
+        """
+        self.set_property("show-other-side", show)
 
 
 class XAxis(Axis):
@@ -912,6 +944,12 @@ class XAxis(Axis):
         context.move_to(rect.x, rect.y + rect.height + 0.5)
         context.rel_line_to(rect.width, 0)
         context.stroke()
+        
+        if self._show_other_side:
+            context.move_to(rect.x, rect.y + 0.5)
+            context.rel_line_to(rect.width, 0)
+            context.stroke()
+        
         tics_drawn_at = self._draw_tics(context, rect, calculated_xrange, tics)
         self._draw_tic_labels(context, rect, tics_drawn_at)
         return tics_drawn_at
@@ -928,6 +966,12 @@ class XAxis(Axis):
                     context.move_to(x, y)
                     context.rel_line_to(0, -self._tics_size)
                     context.stroke()
+                    
+                    if self._show_other_side:
+                        context.move_to(x, rect.y)
+                        context.rel_line_to(0, self._tics_size)
+                        context.stroke()
+                    
                     last_pos = x
                     tics_drawn_at.append((tic, x))
         return tics_drawn_at
@@ -978,6 +1022,12 @@ class YAxis(Axis):
         context.move_to(rect.x + 0.5, rect.y)
         context.rel_line_to(0, rect.height)
         context.stroke()
+        
+        if self._show_other_side:
+            context.move_to(rect.x + rect.width + 0.5, rect.y)
+            context.rel_line_to(0, rect.height)
+            context.stroke()
+        
         tics_drawn_at = self._draw_tics(context, rect, calculated_yrange, tics)
         self._draw_tic_labels(context, rect, tics_drawn_at)
         return tics_drawn_at
@@ -994,6 +1044,12 @@ class YAxis(Axis):
                     context.move_to(x, y)
                     context.rel_line_to(self._tics_size, 0)
                     context.stroke()
+                    
+                    if self._show_other_side:
+                        context.move_to(x + rect.width, y)
+                        context.rel_line_to(-self._tics_size, 0)
+                        context.stroke()
+                    
                     last_pos = y
                     tics_drawn_at.append((tic, y))
         return tics_drawn_at
@@ -1106,15 +1162,22 @@ class Grid(ChartObject):
         if self._show_vertical_lines:
             set_context_line_style(context, self._line_style_vertical)
             for x, xpos in xtics:
-                context.move_to(xpos, rect.y)
-                context.rel_line_to(0, rect.height - xaxis.get_tic_size())
+                if xaxis.get_show_other_side():
+                    context.move_to(xpos, rect.y + xaxis.get_tic_size())
+                    context.rel_line_to(0, rect.height - 2 * xaxis.get_tic_size())
+                else:
+                    context.move_to(xpos, rect.y)
+                    context.rel_line_to(0, rect.height - xaxis.get_tic_size())
                 context.stroke()
         #draw horizontal lines
         if self._show_horizontal_lines:
             set_context_line_style(context, self._line_style_horizontal)
             for y, ypos in ytics:
                 context.move_to(rect.x + yaxis.get_tic_size(), ypos)
-                context.rel_line_to(rect.width - yaxis.get_tic_size(), 0)
+                if yaxis.get_show_other_side():
+                    context.rel_line_to(rect.width - 2 * yaxis.get_tic_size(), 0)
+                else:
+                    context.rel_line_to(rect.width - yaxis.get_tic_size(), 0)
                 context.stroke()
                 
     def get_show_horizontal_lines(self):

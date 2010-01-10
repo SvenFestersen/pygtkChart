@@ -163,8 +163,11 @@ def graph_new_constant(xmin, xmax, value):
         
 def graph_draw_fill_to(context, rect, data, xrange, yrange, ppu_x, ppu_y, fill_to, color, opacity):
     fill_graph = None
+    xmin, xmax = xrange
     if type(fill_to) == Graph:
         fill_graph = fill_to
+        xmin = max(xrange[0], data[0][0])
+        xmax = min(xrange[1], data[-1][0])
     elif type(fill_to) in [int, float]:
         xmin = max(xrange[0], data[0][0])
         xmax = min(xrange[1], data[-1][0])
@@ -174,11 +177,13 @@ def graph_draw_fill_to(context, rect, data, xrange, yrange, ppu_x, ppu_y, fill_t
         c = color_gdk_to_cairo(color)
         context.set_source_rgba(c[0], c[1], c[2], opacity)
         other_data = fill_graph.get_points()[:]
+        xmin = max(xmin, other_data[0][0])
+        xmax = min(xmax, other_data[-1][0])
         other_data.reverse()
         first_point = True
         for point in data:
             x, y = point
-            if not xrange[0] <= x <= xrange[1]: continue
+            if not xmin <= x <= xmax: continue
             posx = rect.x + ppu_x * (x - xrange[0])
             posy = rect.y + rect.height - ppu_y * (y - yrange[0])
             
@@ -189,7 +194,7 @@ def graph_draw_fill_to(context, rect, data, xrange, yrange, ppu_x, ppu_y, fill_t
                 context.line_to(posx, posy)
         for point in other_data:
             x, y = point
-            if not xrange[0] <= x <= xrange[1]: continue
+            if not xmin <= x <= xmax: continue
             posx = rect.x + ppu_x * (x - xrange[0])
             posy = rect.y + rect.height - ppu_y * (y - yrange[0])
             context.line_to(posx, posy)

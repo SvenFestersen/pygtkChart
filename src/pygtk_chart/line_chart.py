@@ -126,7 +126,8 @@ def graph_draw_point_pixbuf(context, x, y, pixbuf):
     context.rectangle(ax, ay, w, h)
     context.fill()
     
-def graph_draw_points(graph, context, rect, data, xrange, yrange, ppu_x, ppu_y, point_style, point_size):
+def graph_draw_points(graph, context, rect, data, xrange, yrange, ppu_x, ppu_y, point_style, color, point_size, highlighted):
+    context.set_source_rgb(*color_gdk_to_cairo(color))
     if point_style != pygtk_chart.POINT_STYLE_NONE:
         for point in data:
             x, y = point
@@ -137,10 +138,15 @@ def graph_draw_points(graph, context, rect, data, xrange, yrange, ppu_x, ppu_y, 
             if type(point_style) != gtk.gdk.Pixbuf:
                 chart.add_sensitive_area(chart.AREA_CIRCLE, (posx, posy, point_size), (graph, (x, y)))
                 graph_draw_point(context, posx, posy, point_size, point_style)
+                if point in highlighted:
+                    context.set_source_rgba(1, 1, 1, 0.3)
+                    graph_draw_point(context, posx, posy, point_size, point_style)
+                    context.set_source_rgb(*color_gdk_to_cairo(color))
             else:
                 graph_draw_point_pixbuf(context, posx, posy, point_style)
                 
-def graph_draw_lines(context, rect, data, xrange, yrange, ppu_x, ppu_y, line_style):
+def graph_draw_lines(context, rect, data, xrange, yrange, ppu_x, ppu_y, line_style, color):
+    context.set_source_rgb(*color_gdk_to_cairo(color))
     if line_style != pygtk_chart.LINE_STYLE_NONE:
         set_context_line_style(context, line_style)
         first_point = True
@@ -238,6 +244,10 @@ class Graph(ChartObject):
                                         "opacity of the filled area",
                                         "The opacity of filled areas.",
                                         0.0, 1.0, 0.3,
+                                        gobject.PARAM_READWRITE),
+                        "highlighted": (gobject.TYPE_PYOBJECT,
+                                        "list of points to highlight",
+                                        "List of points to highlight.",
                                         gobject.PARAM_READWRITE)}
     
     _xrange = None
@@ -248,6 +258,7 @@ class Graph(ChartObject):
     _color = COLOR_AUTO
     _fill_to = None
     _fill_opacity = 0.3
+    _highlighted = []
     
     def __init__(self, name, points=[]):
         super(Graph, self).__init__()
@@ -276,6 +287,8 @@ class Graph(ChartObject):
             return self._fill_to
         elif property.name == "fill-opacity":
             return self._fill_opacity
+        elif property.name == "highlighted":
+            return self._highlighted
         else:
             return super(Graph, self).do_get_property(property)
         
@@ -293,6 +306,8 @@ class Graph(ChartObject):
                 self._fill_to = value
         elif property.name == "fill-opacity":
             self._fill_opacity = value
+        elif property.name == "highlighted":
+            self._highlighted = value
         else:
             super(Graph, self).do_set_property(property, value)
         
@@ -309,9 +324,8 @@ class Graph(ChartObject):
         ppu_y = float(rect.height) / abs(yrange[0] - yrange[1])
         
         graph_draw_fill_to(context, rect, self._data, xrange, yrange, ppu_x, ppu_y, self._fill_to, color, self._fill_opacity)
-        context.set_source_rgb(*color_gdk_to_cairo(color))
-        graph_draw_lines(context, rect, self._data, xrange, yrange, ppu_x, ppu_y, self._line_style)                
-        graph_draw_points(self, context, rect, self._data, xrange, yrange, ppu_x, ppu_y, self._point_style, self._point_size)    
+        graph_draw_lines(context, rect, self._data, xrange, yrange, ppu_x, ppu_y, self._line_style, color)                
+        graph_draw_points(self, context, rect, self._data, xrange, yrange, ppu_x, ppu_y, self._point_style, color, self._point_size, self._highlighted)    
         
     def get_points(self):
         return self._data
@@ -537,6 +551,35 @@ class Graph(ChartObject):
         """
         self.set_property("fill-opacity", opacity)
         
+    def get_highlighted(self):
+        """
+        Returns a list of highlighted datapoints.
+        
+        (getter method for property 'highlighted', see setter method
+        for details)
+        
+        @return: list of datapoints
+        """
+        return self.get_property("highlighted")
+        
+    def set_highlighted(self, points):
+        """
+        Set the list points to be highlighted.
+        
+        This is the setter method for the property 'highlighted'.
+        Property type: gobject.TYPE_PYOBJECT
+        Property default value: []
+        
+        @type points: a list of points
+        """
+        self.set_property("highlighted", points)
+        
+    def add_highlighted(self, point):
+        """
+        Add a point to the highlighted list.
+        """
+        self._highlighted.append(point)
+        
         
 
 def chart_calculate_ranges(xrange, yrange, graphs):
@@ -600,6 +643,10 @@ class LineChart(chart.Chart):
     __gsignals__ = {"point-clicked": (gobject.SIGNAL_RUN_LAST,
                                         gobject.TYPE_NONE,
                                         (gobject.TYPE_PYOBJECT,
+                                        gobject.TYPE_PYOBJECT)),
+                    "point-hovered": (gobject.SIGNAL_RUN_LAST,
+                                        gobject.TYPE_NONE,
+                                        (gobject.TYPE_PYOBJECT,
                                         gobject.TYPE_PYOBJECT))}
     
     _xrange = RANGE_AUTO
@@ -616,11 +663,21 @@ class LineChart(chart.Chart):
         
     def _cb_button_pressed(self, widget, event):
         data = chart.get_sensitive_areas(event.x, event.y)
-        for graph, pos in data:
-            self.emit("point-clicked", graph, pos)
+        for graph, point in data:
+            self.emit("point-clicked", graph, point)
     
     def _cb_motion_notify(self, widget, event):
-        pass
+        data = chart.get_sensitive_areas(event.x, event.y)
+        change = False
+        for graph in self._graphs:
+            if graph.get_highlighted() != []:
+                change = True
+            graph.set_highlighted([])
+        for graph, point in data:
+            graph.add_highlighted(point)
+            self.emit("point-hovered", graph, point)
+        if data != [] or change:
+            self.queue_draw()
         
     def draw(self, context):
         """

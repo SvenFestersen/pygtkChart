@@ -629,6 +629,9 @@ def chart_calculate_tics_for_range(crange):
     
     ten_exp = math.pow(10, exp) #store this value for performance reasons
     
+    if delta / ten_exp < 1:
+        ten_exp = ten_exp / 10
+    
     m = int(crange[0] / ten_exp) - 1
     n = int(crange[1] / ten_exp) + 1
     for i in range(m, n + 1):

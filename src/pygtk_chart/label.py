@@ -163,6 +163,9 @@ class Label(ChartObject):
                                     False, gobject.PARAM_READWRITE),
                         "wrap": (gobject.TYPE_BOOLEAN, "wrap text",
                                     "Set whether text should be wrapped.",
+                                    False, gobject.PARAM_READWRITE),
+                        "use-markup": (gobject.TYPE_BOOLEAN, "use markup",
+                                    "Set whether to interpret markuped text.",
                                     False, gobject.PARAM_READWRITE)}
     
     def __init__(self, position, text, size=None,
@@ -184,6 +187,7 @@ class Label(ChartObject):
         self._max_width = max_width
         self._fixed = fixed
         self._wrap = True
+        self._markup = False
         
         self._real_dimensions = (0, 0)
         self._real_position = (0, 0)
@@ -221,6 +225,8 @@ class Label(ChartObject):
             return self._fixed
         elif property.name == "wrap":
             return self._wrap
+        elif property.name == "use-markup":
+            return self._markup
         else:
             raise AttributeError, "Property %s does not exist." % property.name
 
@@ -253,6 +259,8 @@ class Label(ChartObject):
             self._fixed = value
         elif property.name == "wrap":
             self._wrap = value
+        elif property.name == "use-markup":
+            self._markup = value
         else:
             raise AttributeError, "Property %s does not exist." % property.name
         
@@ -279,8 +287,11 @@ class Label(ChartObject):
         if self._layout == None:
             self._layout = pango.Layout(pango_context)
         layout = self._layout
-        layout.set_text(self._text)
-        layout.set_attributes(attrs)
+        if self._markup:
+            layout.set_markup(self._text)
+        else:
+            layout.set_text(self._text)
+            layout.set_attributes(attrs)
         
         #find out where to draw the layout and calculate the maximum width
         width = rect.width * math.cos(angle) + rect.height * math.sin(angle)
@@ -412,8 +423,11 @@ class Label(ChartObject):
         if self._layout == None:
             self._layout = pango.Layout(pango_context)
         layout = self._layout
-        layout.set_text(self._text)
-        layout.set_attributes(attrs)
+        if self._markup:
+            layout.set_markup(self._text)
+        else:
+            layout.set_text(self._text)
+            layout.set_attributes(attrs)
         
         #find out where to draw the layout and calculate the maximum width
         width = rect.width * math.cos(angle) + rect.height * math.sin(angle)
@@ -638,6 +652,16 @@ class Label(ChartObject):
         self.set_property("underline", underline)
         self.emit("appearance_changed")
         
+    def set_use_markup(self, use):
+        """
+        Set whether to interpret markup in text. If True, all other text
+        manipulation (weight, size, etc.) don't have anyy effect.
+        
+        @type use: boolean.
+        """
+        self.set_property("use-markup", use)
+        self.emit("appearance_changed")
+        
     def get_underline(self):
         """
         Returns the current underline style. See L{set_underline} for
@@ -646,6 +670,14 @@ class Label(ChartObject):
         @return: an underline constant (see L{set_underline}).
         """
         return self.get_property("underline")
+        
+    def get_use_markup(self):
+        """
+        Returns True if the label interprets pango markup.
+        
+        @return: boolean.
+        """
+        return self.get_property("use-markup")
         
     def set_max_width(self, width):
         """

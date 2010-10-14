@@ -1099,6 +1099,7 @@ class XAxis(Axis):
         if self._label and self._show_label:
             pos = rect.x + rect.width / 2, rect.y + rect.height + self._offset_by_tic_label + self._label_spacing
             label_object = label.Label(pos, self._label, anchor=label.ANCHOR_TOP_CENTER)
+            label_object.set_use_markup(True)
             label_object.draw(context, rect)
             
     def _draw_tic_labels(self, context, rect, tics_drawn_at):
@@ -1116,6 +1117,7 @@ class XAxis(Axis):
             pos = rect.x + rect.width / 2, rect.y + rect.height
             label_object = label.Label(pos, self._label, anchor=label.ANCHOR_TOP_CENTER)
             label_object.set_max_width(rect.width)
+            label_object.set_use_markup(True)
             w, h = label_object.get_calculated_dimensions(context, rect)
             offset = int(h)
         if self._show_tics and self._show_tic_labels:
@@ -1179,6 +1181,7 @@ class YAxis(Axis):
             label_object = label.Label(pos, self._label, anchor=label.ANCHOR_BOTTOM_CENTER)
             label_object.set_rotation(90)
             label_object.set_wrap(False)
+            label_object.set_use_markup(True)
             label_object.set_max_width(rect.height)
             label_object.draw(context, rect)
             
@@ -1198,6 +1201,7 @@ class YAxis(Axis):
             label_object = label.Label(pos, self._label, anchor=label.ANCHOR_TOP_CENTER)
             label_object.set_rotation(90)
             label_object.set_wrap(False)
+            label_object.set_use_markup(True)
             label_object.set_max_width(rect.height)
             w, h = label_object.get_calculated_dimensions(context, rect)
             offset = int(w)

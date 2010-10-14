@@ -760,6 +760,8 @@ class LineChart(chart.Chart):
         self.grid.draw(context, rect, xtics, ytics, self.xaxis, self.yaxis)
         
     def _draw_graphs(self, context, rect, calculated_xrange, calculated_yrange):
+        context.rectangle(rect.x, rect.y, rect.width, rect.height)
+        context.clip()
         chart.init_sensitive_areas()
         for i, graph in enumerate(self._graphs):
             gc = graph.get_property("color")

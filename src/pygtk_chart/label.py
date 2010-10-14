@@ -820,37 +820,3 @@ class Label(ChartObject):
         @return: int.
         """
         return self._line_count
-    
-        
-def get_text_pos(layout, pos, anchor, angle):
-    """
-    This function calculates the position of bottom left point of the
-    layout respecting the given anchor point.
-    
-    @return: (x, y) pair
-    """
-    text_width_n, text_height_n = layout.get_pixel_size()
-    text_width = text_width_n * abs(math.cos(angle)) + text_height_n * abs(math.sin(angle))
-    text_height = text_height_n * abs(math.cos(angle)) + text_width_n * abs(math.sin(angle))
-    height_delta = text_height - text_height_n
-    x, y = pos
-    ref = (0, -text_height)
-    if anchor == ANCHOR_TOP_LEFT:
-        ref = (0, 0)
-    elif anchor == ANCHOR_TOP_RIGHT:
-        ref = (-text_width, height_delta)
-    elif anchor == ANCHOR_BOTTOM_RIGHT:
-        ref = (-text_width, -text_height)
-    elif anchor == ANCHOR_CENTER:
-        ref = (-text_width / 2, -text_height / 2)
-    elif anchor == ANCHOR_TOP_CENTER:
-        ref = (-text_width / 2, 0)
-    elif anchor == ANCHOR_BOTTOM_CENTER:
-        ref = (-text_width / 2, -text_height)
-    elif anchor == ANCHOR_LEFT_CENTER:
-        ref = (0, -text_height / 2)
-    elif anchor == ANCHOR_RIGHT_CENTER:
-        ref = (-text_width, -text_height / 2)
-    x += ref[0]
-    y += ref[1]
-    return x, y

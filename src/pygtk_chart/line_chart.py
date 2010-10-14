@@ -1174,8 +1174,8 @@ class YAxis(Axis):
     def _draw_label(self, context, rect):
         if self._label and self._show_label:
             pos = rect.x - self._offset_by_tic_label - self._label_spacing, rect.y + rect.height / 2
-            label_object = label.Label(pos, self._label, anchor=label.ANCHOR_RIGHT_CENTER)
-            label_object.set_rotation(270)
+            label_object = label.Label(pos, self._label, anchor=label.ANCHOR_BOTTOM_CENTER)
+            label_object.set_rotation(90)
             label_object.set_wrap(False)
             label_object.set_max_width(rect.height)
             label_object.draw(context, rect)
@@ -1193,8 +1193,8 @@ class YAxis(Axis):
         offset = 0
         if self._label and self._show_label:
             pos = rect.x, rect.y + rect.height / 2
-            label_object = label.Label(pos, self._label, anchor=label.ANCHOR_RIGHT_CENTER)
-            label_object.set_rotation(270)
+            label_object = label.Label(pos, self._label, anchor=label.ANCHOR_TOP_CENTER)
+            label_object.set_rotation(90)
             label_object.set_wrap(False)
             label_object.set_max_width(rect.height)
             w, h = label_object.get_calculated_dimensions(context, rect)

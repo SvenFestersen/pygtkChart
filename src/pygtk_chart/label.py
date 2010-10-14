@@ -83,6 +83,14 @@ def get_registered_labels():
     if DRAWING_INITIALIZED:
         return REGISTERED_LABELS
     return []
+    
+def rotate_vector(offset, vector, angle):
+    angle = -angle
+    x = vector[0] - offset[0]
+    y = vector[1] - offset[1]
+    nx = x * math.cos(angle) - y * math.sin(angle) + offset[0]
+    ny = y * math.cos(angle) + x * math.sin(angle) + offset[1]
+    return (nx, ny)
 
 
 class Label(ChartObject):
@@ -275,7 +283,7 @@ class Label(ChartObject):
         layout.set_attributes(attrs)
         
         #find out where to draw the layout and calculate the maximum width
-        width = rect.width
+        width = rect.width * math.cos(angle) + rect.height * math.sin(angle)
         if self._anchor in [ANCHOR_BOTTOM_LEFT, ANCHOR_TOP_LEFT,
                             ANCHOR_LEFT_CENTER]:
             width = rect.width - self._position[0]
@@ -284,56 +292,107 @@ class Label(ChartObject):
             width = self._position[0]
         
         text_width, text_height = layout.get_pixel_size()
-        width = width * math.cos(angle)
         width = min(width, self._max_width)
         
         if self._wrap:
             layout.set_wrap(pango.WRAP_WORD_CHAR)
         layout.set_width(int(1000 * width))
         
-        x, y = get_text_pos(layout, self._position, self._anchor, angle)
-        
-        if not self._fixed:
-            #Find already drawn labels that would intersect with the current one
-            #and adjust position to avoid intersection.
-            text_width, text_height = layout.get_pixel_size()
-            real_width = abs(text_width * math.cos(angle)) + abs(text_height * math.sin(angle))
-            real_height = abs(text_height * math.cos(angle)) + abs(text_width * math.sin(angle))
+        text_width, text_height = layout.get_pixel_size()
+        anchor = self._anchor
+        x, y = self._position
+    
+        #anchor translation
+        tx, ty = 0, 0
+        ttx, tty = 0, 0
+        if anchor == ANCHOR_BOTTOM_LEFT:
+            tx = text_height * math.sin(angle)
+            ty = text_height * math.cos(angle)
+            ttx = 0
+            tty = text_height
+        elif anchor == ANCHOR_TOP_LEFT:
+            tx = 0
+            ty = 0
+        elif anchor ==  ANCHOR_TOP_RIGHT:
+            tx = text_width * math.cos(angle)
+            ty = -text_width * math.sin(angle)
+            ttx = text_width
+            tty = 0
+        elif anchor == ANCHOR_BOTTOM_RIGHT:
+            tx = text_width * math.cos(angle) + text_height * math.sin(angle)
+            ty = -text_width * math.sin(angle) + text_height * math.cos(angle)
+            ttx = text_width
+            tty = text_height
+        elif anchor == ANCHOR_CENTER:
+            tx = (text_width * math.cos(angle) + text_height * math.sin(angle)) / 2
+            ty = (-text_width * math.sin(angle) + text_height * math.cos(angle)) / 2
+            ttx = text_width / 2
+            tty = text_height / 2
+        elif anchor == ANCHOR_TOP_CENTER:
+            tx = text_width * math.cos(angle) / 2
+            ty = -text_width * math.sin(angle) / 2
+            ttx = text_width / 2
+            tty = 0
+        elif anchor == ANCHOR_BOTTOM_CENTER:
+            tx = text_width * math.cos(angle) / 2 + text_height * math.sin(angle)
+            ty = -text_width * math.sin(angle) / 2 + text_height * math.cos(angle)
+            ttx = text_width / 2
+            tty = text_height
+        elif anchor == ANCHOR_LEFT_CENTER:
+            tx = text_height * math.sin(angle) / 2
+            ty = text_height * math.cos(angle) / 2
+            ttx = 0
+            tty = text_height / 2
+        elif anchor == ANCHOR_RIGHT_CENTER:
+            tx = text_width * math.cos(angle) + text_height * math.sin(angle) / 2
+            ty = -text_width * math.sin(angle) + text_height * math.cos(angle) / 2
+            ttx = text_width
+            tty = text_height / 2
             
-            other_labels = get_registered_labels()
-            this_rect = gtk.gdk.Rectangle(int(x), int(y), int(real_width), int(real_height))
-            for label in other_labels:
-                label_rect = label.get_allocation()
-                intersection = this_rect.intersect(label_rect)
-                if intersection.width == 0 and intersection.height == 0:
-                    continue
-                
-                y_diff = 0
-                if label_rect.y <= y and label_rect.y + label_rect.height >= y:
-                    y_diff = y - label_rect.y + label_rect.height
-                elif label_rect.y > y and label_rect.y < y + real_height:
-                    y_diff = label_rect.y - real_height - y
-                y += y_diff
-        
-        #draw layout
+        context.translate(-tx, -ty)
         context.move_to(x, y)
-        context.rotate(angle)
+        context.rotate(-angle)
         context.set_source_rgb(*basics.color_gdk_to_cairo(self._color))
         context.show_layout(layout)
-        context.rotate(-angle)
+        context.rotate(angle)
         context.stroke()
+        context.translate(tx, ty)
         
-        #calculate the real dimensions
-        text_width, text_height = layout.get_pixel_size()
-        real_width = abs(text_width * math.cos(angle)) + abs(text_height * math.sin(angle))
-        real_height = abs(text_height * math.cos(angle)) + abs(text_width * math.sin(angle))
-        self._real_dimensions = real_width, real_height
-        self._real_position = x, y
+        #calculate the bounding rect
+        real_x = x - ttx
+        real_y = y - tty
+        top_left = real_x, real_y
+        bottom_left = real_x , real_y + text_height
+        bottom_right = real_x + text_width, real_y + text_height
+        top_right = real_x + text_width, real_y
+        
+        offset = x, y
+        
+        n_top_left = rotate_vector(offset, top_left, angle)
+        n_bottom_left = rotate_vector(offset, bottom_left, angle)
+        n_bottom_right = rotate_vector(offset, bottom_right, angle)
+        n_top_right = rotate_vector(offset, top_right, angle)
+        
+        alloc_x_min = int(min(n_top_left[0], n_bottom_left[0], n_bottom_right[0],
+                            n_top_right[0]))
+        alloc_x_max = int(max(n_top_left[0], n_bottom_left[0], n_bottom_right[0],
+                            n_top_right[0]))
+        alloc_y_min = int(min(n_top_left[1], n_bottom_left[1], n_bottom_right[1],
+                            n_top_right[1]))
+        alloc_y_max = int(max(n_top_left[1], n_bottom_left[1], n_bottom_right[1],
+                            n_top_right[1]))
+                            
+        rect = gtk.gdk.Rectangle(alloc_x_min, alloc_y_min,
+                                    alloc_x_max - alloc_x_min,
+                                    alloc_y_max - alloc_y_min)       
+        
+        self._real_dimensions = rect.width, rect.height
+        self._real_position = rect.x, rect.y
         self._line_count = layout.get_line_count()
         
         register_label(self)
         
-    def get_calculated_dimensions(self, context, rect):
+    def get_calculated_rect(self, context, rect):
         angle = 2 * math.pi * self._rotation / 360.0
         
         if self._context == None:
@@ -353,12 +412,11 @@ class Label(ChartObject):
         if self._layout == None:
             self._layout = pango.Layout(pango_context)
         layout = self._layout
-            
         layout.set_text(self._text)
         layout.set_attributes(attrs)
         
         #find out where to draw the layout and calculate the maximum width
-        width = rect.width
+        width = rect.width * math.cos(angle) + rect.height * math.sin(angle)
         if self._anchor in [ANCHOR_BOTTOM_LEFT, ANCHOR_TOP_LEFT,
                             ANCHOR_LEFT_CENTER]:
             width = rect.width - self._position[0]
@@ -367,42 +425,96 @@ class Label(ChartObject):
             width = self._position[0]
         
         text_width, text_height = layout.get_pixel_size()
-        width = width * math.cos(angle)
         width = min(width, self._max_width)
         
         if self._wrap:
             layout.set_wrap(pango.WRAP_WORD_CHAR)
         layout.set_width(int(1000 * width))
         
-        x, y = get_text_pos(layout, self._position, self._anchor, angle)
-        
-        if not self._fixed:
-            #Find already drawn labels that would intersect with the current one
-            #and adjust position to avoid intersection.
-            text_width, text_height = layout.get_pixel_size()
-            real_width = abs(text_width * math.cos(angle)) + abs(text_height * math.sin(angle))
-            real_height = abs(text_height * math.cos(angle)) + abs(text_width * math.sin(angle))
-            
-            other_labels = get_registered_labels()
-            this_rect = gtk.gdk.Rectangle(int(x), int(y), int(real_width), int(real_height))
-            for label in other_labels:
-                label_rect = label.get_allocation()
-                intersection = this_rect.intersect(label_rect)
-                if intersection.width == 0 and intersection.height == 0:
-                    continue
-                
-                y_diff = 0
-                if label_rect.y <= y and label_rect.y + label_rect.height >= y:
-                    y_diff = y - label_rect.y + label_rect.height
-                elif label_rect.y > y and label_rect.y < y + real_height:
-                    y_diff = label_rect.y - real_height - y
-                y += y_diff
-        
-        #calculate the dimensions
+        #======================================================================
         text_width, text_height = layout.get_pixel_size()
-        real_width = abs(text_width * math.cos(angle)) + abs(text_height * math.sin(angle))
-        real_height = abs(text_height * math.cos(angle)) + abs(text_width * math.sin(angle))
-        return real_width, real_height
+        anchor = self._anchor
+        x, y = self._position
+    
+        #anchor translation
+        tx, ty = 0, 0
+        ttx, tty = 0, 0
+        if anchor == ANCHOR_BOTTOM_LEFT:
+            tx = text_height * math.sin(angle)
+            ty = text_height * math.cos(angle)
+            ttx = 0
+            tty = text_height
+        elif anchor == ANCHOR_TOP_LEFT:
+            tx = 0
+            ty = 0
+        elif anchor ==  ANCHOR_TOP_RIGHT:
+            tx = text_width * math.cos(angle)
+            ty = -text_width * math.sin(angle)
+            ttx = text_width
+            tty = 0
+        elif anchor == ANCHOR_BOTTOM_RIGHT:
+            tx = text_width * math.cos(angle) + text_height * math.sin(angle)
+            ty = -text_width * math.sin(angle) + text_height * math.cos(angle)
+            ttx = text_width
+            tty = text_height
+        elif anchor == ANCHOR_CENTER:
+            tx = (text_width * math.cos(angle) + text_height * math.sin(angle)) / 2
+            ty = (-text_width * math.sin(angle) + text_height * math.cos(angle)) / 2
+            ttx = text_width / 2
+            tty = text_height / 2
+        elif anchor == ANCHOR_TOP_CENTER:
+            tx = text_width * math.cos(angle) / 2
+            ty = -text_width * math.sin(angle) / 2
+            ttx = text_width / 2
+            tty = 0
+        elif anchor == ANCHOR_BOTTOM_CENTER:
+            tx = text_width * math.cos(angle) / 2 + text_height * math.sin(angle)
+            ty = -text_width * math.sin(angle) / 2 + text_height * math.cos(angle)
+            ttx = text_width / 2
+            tty = text_height
+        elif anchor == ANCHOR_LEFT_CENTER:
+            tx = text_height * math.sin(angle) / 2
+            ty = text_height * math.cos(angle) / 2
+            ttx = 0
+            tty = text_height / 2
+        elif anchor == ANCHOR_RIGHT_CENTER:
+            tx = text_width * math.cos(angle) + text_height * math.sin(angle) / 2
+            ty = -text_width * math.sin(angle) + text_height * math.cos(angle) / 2
+            ttx = text_width
+            tty = text_height / 2
+        
+        #calculate the bounding rect
+        real_x = x - ttx
+        real_y = y - tty
+        top_left = real_x, real_y
+        bottom_left = real_x , real_y + text_height
+        bottom_right = real_x + text_width, real_y + text_height
+        top_right = real_x + text_width, real_y
+        
+        offset = x, y
+        
+        n_top_left = rotate_vector(offset, top_left, angle)
+        n_bottom_left = rotate_vector(offset, bottom_left, angle)
+        n_bottom_right = rotate_vector(offset, bottom_right, angle)
+        n_top_right = rotate_vector(offset, top_right, angle)
+        
+        alloc_x_min = int(min(n_top_left[0], n_bottom_left[0], n_bottom_right[0],
+                            n_top_right[0]))
+        alloc_x_max = int(max(n_top_left[0], n_bottom_left[0], n_bottom_right[0],
+                            n_top_right[0]))
+        alloc_y_min = int(min(n_top_left[1], n_bottom_left[1], n_bottom_right[1],
+                            n_top_right[1]))
+        alloc_y_max = int(max(n_top_left[1], n_bottom_left[1], n_bottom_right[1],
+                            n_top_right[1]))
+                            
+        rect = gtk.gdk.Rectangle(alloc_x_min, alloc_y_min,
+                                    alloc_x_max - alloc_x_min,
+                                    alloc_y_max - alloc_y_min)
+        return rect
+        
+    def get_calculated_dimensions(self, context, rect):
+        rect = self.get_calculated_rect(context, rect)
+        return rect.width, rect.height
         
     def set_text(self, text):
         """

@@ -54,15 +54,13 @@ def graph_make_ranges(data):
     """
     Calculates the xrange and the yrange from data.
     """
+    xdata, ydata = data
     if data == []:
         return None, None
     #data points are sorted by x values, so xrange is simple:
-    xrange = [data[0][0], data[-1][0]]
+    xrange = [min(xdata), max(xdata)]
     #iterate over all data points to find min and max y values
-    yrange = [data[0][1], data[0][1]]
-    for x, y in data:
-        yrange[0] = min(yrange[0], y)
-        yrange[1] = max(yrange[1], y)
+    yrange = [min(ydata), max(ydata)]
         
     if xrange[0] == xrange[1]:
         #if there is only one point, extend the xrange
@@ -129,8 +127,9 @@ def graph_draw_point_pixbuf(context, x, y, pixbuf):
 def graph_draw_points(graph, context, rect, data, xrange, yrange, ppu_x, ppu_y, point_style, color, point_size, highlighted):
     context.set_source_rgb(*color_gdk_to_cairo(color))
     if point_style != pygtk_chart.POINT_STYLE_NONE:
-        for point in data:
-            x, y = point
+        xdata, ydata = data
+        for i in range(0, len(xdata)):
+            x, y = xdata[i], ydata[i]
             if not xrange[0] <= x <= xrange[1]: continue
             posx = rect.x + ppu_x * (x - xrange[0])
             posy = rect.y + rect.height - ppu_y * (y - yrange[0])
@@ -138,7 +137,7 @@ def graph_draw_points(graph, context, rect, data, xrange, yrange, ppu_x, ppu_y, 
             if type(point_style) != gtk.gdk.Pixbuf:
                 chart.add_sensitive_area(chart.AREA_CIRCLE, (posx, posy, point_size), (graph, (x, y)))
                 graph_draw_point(context, posx, posy, point_size, point_style)
-                if point in highlighted:
+                if (x, y) in highlighted:
                     context.set_source_rgba(1, 1, 1, 0.3)
                     graph_draw_point(context, posx, posy, point_size, point_style)
                     context.set_source_rgb(*color_gdk_to_cairo(color))
@@ -149,9 +148,10 @@ def graph_draw_lines(context, rect, data, xrange, yrange, ppu_x, ppu_y, line_sty
     context.set_source_rgb(*color_gdk_to_cairo(color))
     if line_style != pygtk_chart.LINE_STYLE_NONE:
         set_context_line_style(context, line_style)
+        xdata, ydata = data
         first_point = True
-        for point in data:
-            x, y = point
+        for i in range(0, len(xdata)):
+            x, y = xdata[i], ydata[i]
             if not xrange[0] <= x <= xrange[1]: continue
             posx = rect.x + ppu_x * (x - xrange[0])
             posy = rect.y + rect.height - ppu_y * (y - yrange[0])
@@ -164,8 +164,7 @@ def graph_draw_lines(context, rect, data, xrange, yrange, ppu_x, ppu_y, line_sty
         context.stroke()
         
 def graph_new_constant(xmin, xmax, value):
-    data = [(xmin, value), (xmax, value)]
-    g = Graph("", data)
+    g = Graph("", [xmin, xmax], [value, value])
     return g
         
 def graph_draw_fill_to(context, rect, data, xrange, yrange, ppu_x, ppu_y, fill_to, color, opacity):
@@ -173,23 +172,26 @@ def graph_draw_fill_to(context, rect, data, xrange, yrange, ppu_x, ppu_y, fill_t
     xmin, xmax = xrange
     if type(fill_to) == Graph:
         fill_graph = fill_to
-        xmin = max(xrange[0], data[0][0])
-        xmax = min(xrange[1], data[-1][0])
+        xmin = max(xrange[0], min(data[0]))
+        xmax = min(xrange[1], max(data[0]))
     elif type(fill_to) in [int, float]:
-        xmin = max(xrange[0], data[0][0])
-        xmax = min(xrange[1], data[-1][0])
+        xmin = max(xrange[0], min(data[0]))
+        xmax = min(xrange[1], max(data[0]))
         fill_graph = graph_new_constant(xmin, xmax, fill_to)
         
     if fill_graph != None:
         c = color_gdk_to_cairo(color)
         context.set_source_rgba(c[0], c[1], c[2], opacity)
         other_data = fill_graph.get_points()[:]
-        xmin = max(xmin, other_data[0][0])
-        xmax = min(xmax, other_data[-1][0])
-        other_data.reverse()
+        xmin = max(xmin, min(other_data[0]))
+        xmax = min(xmax, max(other_data[0]))
+        other_data[0].reverse()
+        other_data[1].reverse()
         first_point = True
-        for point in data:
-            x, y = point
+        
+        xdata, ydata = data
+        for i in range(0, len(xdata)):
+            x, y = xdata[i], ydata[i]
             if not xmin <= x <= xmax: continue
             posx = rect.x + ppu_x * (x - xrange[0])
             posy = rect.y + rect.height - ppu_y * (y - yrange[0])
@@ -199,8 +201,8 @@ def graph_draw_fill_to(context, rect, data, xrange, yrange, ppu_x, ppu_y, fill_t
                 first_point = False
             else:
                 context.line_to(posx, posy)
-        for point in other_data:
-            x, y = point
+        for i in range(0, len(other_data[0])):
+            x, y = other_data[0][i], other_data[1][i]
             if not xmin <= x <= xmax: continue
             posx = rect.x + ppu_x * (x - xrange[0])
             posy = rect.y + rect.height - ppu_y * (y - yrange[0])
@@ -260,10 +262,10 @@ class Graph(ChartObject):
     _fill_opacity = 0.3
     _highlighted = []
     
-    def __init__(self, name, points=[]):
+    def __init__(self, name, xdata, ydata):
         super(Graph, self).__init__()
         self._name = name
-        self._data = points
+        self._data = (xdata, ydata)
         
         self._process_data()
         
@@ -315,7 +317,7 @@ class Graph(ChartObject):
         """
         Sorts data points and calculates ranges.
         """
-        graph_sort_data(self._data)
+        #graph_sort_data(self._data)
         self._xrange, self._yrange = graph_make_ranges(self._data)
         
     def _do_draw(self, context, rect, xrange, yrange, color):
@@ -334,7 +336,9 @@ class Graph(ChartObject):
         """
         Add a single data point [(x, y) pair] to the graph.
         """
-        self._data.append(point)
+        x, y = point
+        self._data[0].append(x)
+        self._data[1].append(y)
         self._process_data()
         self.emit("appearance_changed")
         
@@ -342,7 +346,8 @@ class Graph(ChartObject):
         """
         Add a list of data points [(x, y) pairs] to the graph.
         """
-        self._data += points
+        self._data[0] += points[0]
+        self._data[1] += points[1]
         self._process_data()
         self.emit("appearance_changed")
         

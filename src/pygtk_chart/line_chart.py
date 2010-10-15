@@ -773,6 +773,10 @@ class LineChart(chart.Chart):
         self._graphs.append(graph)
         self.queue_draw()
         
+    def clear(self):
+        self._graphs = []
+        self.queue_draw()
+        
     def get_mouse_over_effect(self):
         """
         Returns True if a mouse over effect is shown at datapoints.

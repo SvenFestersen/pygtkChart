@@ -454,7 +454,7 @@ class Graph(ChartObject):
         
         @return: a point style constant, or a gtk.gdk.Pixbuf
         """
-        return self.get_property("line-style")
+        return self.get_property("point-style")
         
     def set_point_style(self, style):
         """

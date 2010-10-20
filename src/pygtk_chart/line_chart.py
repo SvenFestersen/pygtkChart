@@ -290,6 +290,12 @@ class Graph(ChartObject):
             return g
         else:
             return xdata[item], ydata[item]
+            
+    def __add__(self, other):
+        pass
+        
+    def __mul__(self, n):
+        pass
         
     def do_get_property(self, property):
         if property.name == "xrange":

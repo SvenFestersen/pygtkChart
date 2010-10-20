@@ -293,8 +293,20 @@ class Graph(ChartObject):
             
     def __add__(self, other):
         pass
+            
+    def __radd__(self, other):
+        pass
+            
+    def __iadd__(self, other):
+        pass
         
     def __mul__(self, n):
+        pass
+        
+    def __rmul__(self, n):
+        pass
+        
+    def __imul__(self, n):
         pass
         
     def do_get_property(self, property):

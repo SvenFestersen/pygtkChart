@@ -279,6 +279,18 @@ class Graph(ChartObject):
     def __len__(self):
         return len(self._data)
         
+    def __getitem__(self, item):
+        xdata, ydata = self._data
+        if isinstance(item, slice):
+            nxdata = xdata[item.start:item.stop:item.step]
+            nydata = ydata[item.start:item.stop:item.step]
+            name = "%s-%s:%s:%s" % (self._name, item.start, item.stop,
+                                    item.step)
+            g = Graph(name, nxdata, nydata)
+            return g
+        else:
+            return xdata[item], ydata[item]
+        
     def do_get_property(self, property):
         if property.name == "xrange":
             return self._xrange

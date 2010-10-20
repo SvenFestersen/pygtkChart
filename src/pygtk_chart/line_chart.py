@@ -424,6 +424,8 @@ class Graph(ChartObject):
         
         @type style: a line style constant (see above)
         """
+        self.set_property("line-style", style)
+        self.emit("appearance_changed")
     
     def get_line_width(self):
         """

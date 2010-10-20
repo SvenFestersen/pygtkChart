@@ -144,8 +144,9 @@ def graph_draw_points(graph, context, rect, data, xrange, yrange, ppu_x, ppu_y, 
             else:
                 graph_draw_point_pixbuf(context, posx, posy, point_style)
                 
-def graph_draw_lines(context, rect, data, xrange, yrange, ppu_x, ppu_y, line_style, color):
+def graph_draw_lines(context, rect, data, xrange, yrange, ppu_x, ppu_y, line_style, line_width, color):
     context.set_source_rgb(*color_gdk_to_cairo(color))
+    context.set_line_width(line_width)
     if line_style != pygtk_chart.LINE_STYLE_NONE:
         set_context_line_style(context, line_style)
         xdata, ydata = data
@@ -162,6 +163,7 @@ def graph_draw_lines(context, rect, data, xrange, yrange, ppu_x, ppu_y, line_sty
             else:
                 context.line_to(posx, posy)
         context.stroke()
+    context.set_line_width(1)
         
 def graph_new_constant(xmin, xmax, value):
     g = Graph("", [xmin, xmax], [value, value])
@@ -226,6 +228,10 @@ class Graph(ChartObject):
                                         "line style",
                                         "The line style for the graph.",
                                         -1, 3, 0, gobject.PARAM_READWRITE),
+                        "line-width": (gobject.TYPE_INT,
+                                        "line width",
+                                        "The line width for the graph.",
+                                        1, 15, 1, gobject.PARAM_READWRITE),
                         "point-style": (gobject.TYPE_PYOBJECT,
                                         "point style",
                                         "The point style for the graph.",
@@ -255,6 +261,7 @@ class Graph(ChartObject):
     _xrange = None
     _yrange = None
     _line_style = pygtk_chart.LINE_STYLE_SOLID
+    _line_width = 1
     _point_style = pygtk_chart.POINT_STYLE_CIRCLE
     _point_size = 2
     _color = COLOR_AUTO
@@ -279,6 +286,8 @@ class Graph(ChartObject):
             return self._yrange
         elif property.name == "line-style":
             return self._line_style
+        elif property.name == "line-width":
+            return self._line_width
         elif property.name == "point-style":
             return self._point_style
         elif property.name == "point-size":
@@ -297,6 +306,8 @@ class Graph(ChartObject):
     def do_set_property(self, property, value):
         if property.name == "line-style":
             self._line_style = value
+        elif property.name == "line-width":
+            self._line_width = value
         elif property.name == "point-style":
             self._point_style = value
         elif property.name == "point-size":
@@ -326,7 +337,7 @@ class Graph(ChartObject):
         ppu_y = float(rect.height) / abs(yrange[0] - yrange[1])
         
         graph_draw_fill_to(context, rect, self._data, xrange, yrange, ppu_x, ppu_y, self._fill_to, color, self._fill_opacity)
-        graph_draw_lines(context, rect, self._data, xrange, yrange, ppu_x, ppu_y, self._line_style, color)                
+        graph_draw_lines(context, rect, self._data, xrange, yrange, ppu_x, ppu_y, self._line_style, self._line_width, color)                
         graph_draw_points(self, context, rect, self._data, xrange, yrange, ppu_x, ppu_y, self._point_style, color, self._point_size, self._highlighted)    
         
     def get_points(self):
@@ -413,6 +424,24 @@ class Graph(ChartObject):
         
         @type style: a line style constant (see above)
         """
+    
+    def get_line_width(self):
+        """
+        Returns the line width for this graph.
+        
+        @return: int
+        """
+        return self.get_property("line-width")
+        
+    def set_line_width(self, width):
+        """
+        Set the line width for this graph.
+        
+        @param width: new line width
+        @type width: int
+        """
+        self.set_property("line-width", width)
+        self.emit("appearance_changed")
         
     def get_point_style(self):
         """

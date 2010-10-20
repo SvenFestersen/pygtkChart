@@ -770,6 +770,11 @@ class LineChart(chart.Chart):
         xtics = chart_calculate_tics_for_range(calculated_xrange)
         ytics = chart_calculate_tics_for_range(calculated_yrange)
         rect, xtics_drawn_at, ytics_drawn_at = self._draw_axes(context, rect, calculated_xrange, calculated_yrange, xtics, ytics)
+        
+        #restrict drawing area
+        context.rectangle(rect.x + 1, rect.y + 1, rect.width - 1, rect.height - 1)
+        context.clip()
+        
         self._draw_grid(context, rect, xtics_drawn_at, ytics_drawn_at)
         
         self._draw_graphs(context, rect, calculated_xrange, calculated_yrange)
@@ -808,8 +813,6 @@ class LineChart(chart.Chart):
         self.grid.draw(context, rect, xtics, ytics, self.xaxis, self.yaxis)
         
     def _draw_graphs(self, context, rect, calculated_xrange, calculated_yrange):
-        context.rectangle(rect.x, rect.y, rect.width, rect.height)
-        context.clip()
         chart.init_sensitive_areas()
         for i, graph in enumerate(self._graphs):
             gc = graph.get_property("color")

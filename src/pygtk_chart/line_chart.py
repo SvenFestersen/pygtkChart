@@ -42,7 +42,19 @@ from pygtk_chart import COLORS, COLOR_AUTO
 
 RANGE_AUTO = "range_auto"
 
-
+def safe_concatenation(a, b):
+    """
+    Concatenates lists or numpy arrays.
+    """
+    if type(a) == list and type(b) == list:
+        return a + b
+    elif type(a) == list and type(b) == numpy.ndarray:
+        return numpy.concatenate((numpy.array(a), b))
+    elif type(a) == numpy.ndarray and type(b) == list:
+        return numpy.concatenate((a, numpy.array(b)))
+    elif type(a) == numpy.ndarray and type(b) == numpy.ndarray:
+        return numpy.concatenate((a, b))
+        
 def graph_sort_data(data):
     """
     Sorts the data points by the x values.
@@ -292,7 +304,14 @@ class Graph(ChartObject):
             return xdata[item], ydata[item]
             
     def __add__(self, other):
-        pass
+        """
+        Concatenate the data of two graph objects.
+        """
+        xdata, ydata = self._data
+        oxdata, oydata = other.get_points()
+        xdata = safe_concatenation(xdata, oxdata)
+        ydata = safe_concatenation(ydata, oydata)
+        return Graph("%s+%s" % (self._name, other.get_name()), xdata, ydata)
             
     def __radd__(self, other):
         pass
@@ -301,7 +320,10 @@ class Graph(ChartObject):
         pass
         
     def __mul__(self, n):
-        pass
+        ng = Graph("%s*%s" % (n, self._name), self._data[0], self._data[1])
+        for i in range(0, n):
+            ng = ng + self
+        return ng
         
     def __rmul__(self, n):
         pass
@@ -372,6 +394,9 @@ class Graph(ChartObject):
         
     def get_points(self):
         return self._data
+        
+    def get_name(self):
+        return self._name
         
     def add_point(self, point):
         """

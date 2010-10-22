@@ -314,16 +314,42 @@ class Graph(ChartObject):
         return Graph("%s+%s" % (self._name, other.get_name()), xdata, ydata)
             
     def __radd__(self, other):
-        pass
+        """
+        Concatenate the data of two graph objects.
+        Swapped operands.
+        """
+        xdata, ydata = self._data
+        oxdata, oydata = other.get_points()
+        xdata = safe_concatenation(oxdata, xdata)
+        ydata = safe_concatenation(oydata, ydata)
+        return Graph("%s+%s" % (other.get_name(), self._name), xdata, ydata)
             
     def __iadd__(self, other):
-        pass
+        """
+        Replace the graphs data with a concatenation of its data and the data
+        of other.
+        """
+        xdata, ydata = self._data
+        oxdata, oydata = other.get_points()
+        xdata = safe_concatenation(xdata, oxdata)
+        ydata = safe_concatenation(ydata, oydata)
+        self._data = xdata, ydata
+        return self
         
     def __mul__(self, n):
-        ng = Graph("%s*%s" % (n, self._name), self._data[0], self._data[1])
+        """
+        Repetition of the graphs data. Creates a periodic extension of the
+        graph in positive x direction.
+        """
+        nxdata = []
+        nydata = []
+        xdata, ydata = self._data
+        delta = abs(xdata[1] - xdata[0])
         for i in range(0, n):
-            ng = ng + self
-        return ng
+            nxdata = safe_concatenation(nxdata,
+                                        map(lambda x: x + i * delta, xdata))
+            nydata = safe_concatenation(nydata, ydata)
+        return Graph("%s*%s" % (n, self._name), nxdata, nydata)
         
     def __rmul__(self, n):
         pass

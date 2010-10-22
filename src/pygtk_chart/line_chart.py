@@ -351,12 +351,6 @@ class Graph(ChartObject):
             nydata = safe_concatenation(nydata, ydata)
         return Graph("%s*%s" % (n, self._name), nxdata, nydata)
         
-    def __rmul__(self, n):
-        pass
-        
-    def __imul__(self, n):
-        pass
-        
     def do_get_property(self, property):
         if property.name == "xrange":
             return self._xrange

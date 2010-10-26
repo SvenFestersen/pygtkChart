@@ -755,7 +755,9 @@ def chart_calculate_tics_for_range(crange):
     n = int(crange[1] / ten_exp) + 1
     for i in range(m, n + 1):
         tics.append(i * ten_exp)
+        tics.append((i + 0.25) * ten_exp)
         tics.append((i + 0.5) * ten_exp)
+        tics.append((i + 0.75) * ten_exp)
     tics = filter(lambda x: crange[0] <= x <= crange[1], tics) #filter out tics not in range (there can be one or two)
     return tics
 

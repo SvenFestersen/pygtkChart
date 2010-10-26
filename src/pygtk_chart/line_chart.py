@@ -1060,7 +1060,7 @@ class Axis(ChartObject):
     _show_tic_labels = True
     _tic_label_format = str
     _tics_size = 3
-    _min_tic_spacing = 20 
+    _min_tic_spacing = 35 
     _offset_by_tic_label = 0
     _show_other_side = True
     

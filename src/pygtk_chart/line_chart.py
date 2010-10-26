@@ -693,7 +693,7 @@ class Graph(ChartObject):
         
         
 
-def chart_calculate_ranges(xrange, yrange, graphs):
+def chart_calculate_ranges(xrange, yrange, graphs, extend_x=(0, 0), extend_y=(0, 0)):
     if xrange != RANGE_AUTO:
         #the xrange was set manually => no calculation neccessary
         calc_xrange = xrange
@@ -709,6 +709,10 @@ def chart_calculate_ranges(xrange, yrange, graphs):
                 calc_xrange = min(calc_xrange[0], g_xrange[0]), max(calc_xrange[1], g_xrange[1])
         if calc_xrange == None:
             calc_xrange = (0, 1)
+        else:
+            delta = abs(calc_xrange[1] - calc_xrange[0])
+            calc_xrange = (calc_xrange[0] - delta * extend_x[0],
+                            calc_xrange[1] + delta * extend_x[1])
             
     if yrange != RANGE_AUTO:
         #the yrange was set manually => no calculation neccessary
@@ -723,6 +727,10 @@ def chart_calculate_ranges(xrange, yrange, graphs):
                 calc_yrange = g_yrange
             else:
                 calc_yrange = min(calc_yrange[0], g_yrange[0]), max(calc_yrange[1], g_yrange[1])
+
+                delta = abs(calc_yrange[1] - calc_yrange[0])
+                calc_yrange = (calc_yrange[0] - delta * extend_y[0],
+                                calc_yrange[1] + delta * extend_y[1])
         if calc_yrange == None:
             calc_yrange = (0, 1)
             
@@ -766,11 +774,22 @@ class LineChart(chart.Chart):
     __gproperties__ = {"mouse-over-effect": (gobject.TYPE_BOOLEAN,
                                             "set whether to show datapoint mouse over effect",
                                             "Set whether to show datapoint mouse over effect.",
-                                            True, gobject.PARAM_READWRITE)}
+                                            True, gobject.PARAM_READWRITE),
+                        "extend-xrange": (gobject.TYPE_PYOBJECT,
+                                            "set how to extend the xrange",
+                                            "Set how to extend the xrange.",
+                                            gobject.PARAM_READWRITE),
+                        "extend-yrange": (gobject.TYPE_PYOBJECT,
+                                            "set how to extend the yrange",
+                                            "Set how to extend the yrange.",
+                                            gobject.PARAM_READWRITE)}
     
     _xrange = RANGE_AUTO
     _yrange = RANGE_AUTO
     _mouse_over_effect = True
+    _extend_xrange = (0, 0)
+    _extend_yrange = (0, 0)
+    _peak_marker = None
     
     def __init__(self):
         super(LineChart, self).__init__()
@@ -784,12 +803,20 @@ class LineChart(chart.Chart):
     def do_get_property(self, property):
         if property.name == "mouse-over-effect":
             return self._mouse_over_effect
+        elif property.name == "extend-xrange":
+            return self._extend_xrange
+        elif property.name == "extend-yrange":
+            return self._extend_yrange
         else:
             return super(LineChart, self).do_get_property(property)
             
     def do_set_property(self, property, value):
         if property.name == "mouse-over-effect":
             self._mouse_over_effect = value
+        elif property.name == "extend-xrange":
+            self._extend_xrange = value
+        elif property.name == "extend-yrange":
+            self._extend_yrange = value
         else:
             super(LineChart, self).do_set_property(property, value)
         
@@ -829,7 +856,14 @@ class LineChart(chart.Chart):
                                     
         rect = self._draw_basics(context, rect)
         
-        calculated_xrange, calculated_yrange = chart_calculate_ranges(self._xrange, self._yrange, self._graphs)
+        extend_x = self._extend_xrange
+        extend_y = self._extend_yrange
+        
+        if self._peak_marker != None:
+            #extend the y range 10% at the top to show peak marker
+            extend_y = extend_y[0], extend_y[1] + 0.1
+        
+        calculated_xrange, calculated_yrange = chart_calculate_ranges(self._xrange, self._yrange, self._graphs, extend_x, extend_y)
         xtics = chart_calculate_tics_for_range(calculated_xrange)
         ytics = chart_calculate_tics_for_range(calculated_yrange)
         rect, xtics_drawn_at, ytics_drawn_at = self._draw_axes(context, rect, calculated_xrange, calculated_yrange, xtics, ytics)
@@ -841,6 +875,8 @@ class LineChart(chart.Chart):
         self._draw_grid(context, rect, xtics_drawn_at, ytics_drawn_at)
         
         self._draw_graphs(context, rect, calculated_xrange, calculated_yrange)
+        
+        self._draw_peak_marker(context, rect, calculated_xrange, calculated_yrange)
         
         label.finish_drawing()
         
@@ -882,6 +918,23 @@ class LineChart(chart.Chart):
             if gc == COLOR_AUTO:
                 gc = COLORS[i % len(COLORS)]
             graph.draw(context, rect, calculated_xrange, calculated_yrange, gc)
+            
+    def _draw_peak_marker(self, context, rect, xrange, yrange):
+        if self._peak_marker != None:
+            ppu_x = float(rect.width) / abs(xrange[0] - xrange[1])
+            ppu_y = float(rect.height) / abs(yrange[0] - yrange[1])
+            
+            x, y = self._peak_marker
+            
+            posx = rect.x + ppu_x * (x - xrange[0])
+            posy = rect.y + rect.height - ppu_y * (y - yrange[0])
+            
+            context.set_source_rgb(0, 0, 0)
+            context.move_to(posx, posy)
+            context.rel_line_to(5, -5)
+            context.rel_line_to(-10, 0)
+            context.close_path()
+            context.fill()
         
     def add_graph(self, graph):
         self._graphs.append(graph)
@@ -913,6 +966,60 @@ class LineChart(chart.Chart):
         @type mouseover: boolean
         """
         self.set_property("mouse-over-effect", mouseover)
+        
+    def set_peak_marker(self, pos):
+        """
+        Add a peak marker (small black triangle at pos=(x,y)). A chart can
+        only have one peak marker.
+        Set pos=None to remove the marker.
+        
+        @param pos: the marker position
+        @type pos: pair of float
+        """
+        self._peak_marker = pos
+        self.queue_draw()
+        
+    def get_extend_xrange(self):
+        """
+        Returns a pair of floating point numbers that describe the extension
+        of the xrange (see setter function for details).
+        
+        @return: pair of float
+        """
+        return self.get_property("extend-xrange")
+        
+    def set_extend_xrange(self, extend):
+        """
+        Set how to extend the xrange. extend has to be a pair of float values
+        (a, b). If the original xrange is [xmin, xmax] it will be set to
+        [xmin * (1 + a), xmax * (1 + b)] on drawing.
+        
+        @param extend: extend parameters
+        @type extend: pair of float
+        """
+        self.set_property("extend-xrange", extend)
+        self.queue_draw()
+        
+    def get_extend_yrange(self):
+        """
+        Returns a pair of floating point numbers that describe the extension
+        of the yrange (see setter function for details).
+        
+        @return: pair of float
+        """
+        return self.get_property("extend-yrange")
+        
+    def set_extend_yrange(self, extend):
+        """
+        Set how to extend the yrange. extend has to be a pair of float values
+        (a, b). If the original yrange is [ymin, ymax] it will be set to
+        [ymin * (1 + a), ymax * (1 + b)] on drawing.
+        
+        @param extend: extend parameters
+        @type extend: pair of float
+        """
+        self.set_property("extend-yrange", extend)
+        self.queue_draw()
 
 
 class Axis(ChartObject):

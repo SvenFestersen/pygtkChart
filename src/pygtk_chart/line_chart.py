@@ -69,9 +69,7 @@ def graph_make_ranges(data):
     xdata, ydata = data
     if data == []:
         return None, None
-    #data points are sorted by x values, so xrange is simple:
     xrange = [min(xdata), max(xdata)]
-    #iterate over all data points to find min and max y values
     yrange = [min(ydata), max(ydata)]
         
     if xrange[0] == xrange[1]:

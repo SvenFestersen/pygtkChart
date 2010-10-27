@@ -725,13 +725,14 @@ def chart_calculate_ranges(xrange, yrange, graphs, extend_x=(0, 0), extend_y=(0,
                 calc_yrange = g_yrange
             else:
                 calc_yrange = min(calc_yrange[0], g_yrange[0]), max(calc_yrange[1], g_yrange[1])
-
-                delta = abs(calc_yrange[1] - calc_yrange[0])
-                calc_yrange = (calc_yrange[0] - delta * extend_y[0],
-                                calc_yrange[1] + delta * extend_y[1])
+                
         if calc_yrange == None:
             calc_yrange = (0, 1)
-            
+        else:
+            delta = abs(calc_yrange[1] - calc_yrange[0])
+            calc_yrange = (calc_yrange[0] - delta * extend_y[0],
+                            calc_yrange[1] + delta * extend_y[1])
+        
     return calc_xrange, calc_yrange
     
     

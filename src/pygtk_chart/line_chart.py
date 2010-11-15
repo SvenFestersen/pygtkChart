@@ -59,13 +59,6 @@ def safe_concatenation(a, b):
         return numpy.concatenate((a, numpy.array(b)))
     elif type(a) == numpy.ndarray and type(b) == numpy.ndarray:
         return numpy.concatenate((a, b))
-        
-def graph_sort_data(data):
-    """
-    Sorts the data points by the x values.
-    """
-    f = lambda a, b: cmp(a[0], b[0])
-    data.sort(f)
     
 def graph_make_ranges(data):
     """
@@ -403,7 +396,6 @@ class Graph(ChartObject):
         """
         Sorts data points and calculates ranges.
         """
-        #graph_sort_data(self._data)
         self._xrange, self._yrange = graph_make_ranges(self._data)
         
     def _do_draw(self, context, rect, xrange, yrange, color):

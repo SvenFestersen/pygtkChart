@@ -46,6 +46,10 @@ except:
 
 
 RANGE_AUTO = "range_auto"
+KEY_POSITION_TOP_RIGHT = 0
+KEY_POSITION_TOP_LEFT = 1
+KEY_POSITION_BOTTOM_LEFT = 2
+KEY_POSITION_BOTTOM_RIGHT = 3
 
 def safe_concatenation(a, b):
     """
@@ -793,6 +797,7 @@ class LineChart(chart.Chart):
         self.xaxis = XAxis()
         self.yaxis = YAxis()
         self.grid = Grid()
+        self.key = LineChartKey()
         #private attributes
         self._graphs = []
         
@@ -865,6 +870,7 @@ class LineChart(chart.Chart):
         rect, xtics_drawn_at, ytics_drawn_at = self._draw_axes(context, rect, calculated_xrange, calculated_yrange, xtics, ytics)
         
         #restrict drawing area
+        context.save()
         context.rectangle(rect.x + 1, rect.y + 1, rect.width - 1, rect.height - 1)
         context.clip()
         
@@ -873,6 +879,10 @@ class LineChart(chart.Chart):
         self._draw_graphs(context, rect, calculated_xrange, calculated_yrange)
         
         self._draw_peak_marker(context, rect, calculated_xrange, calculated_yrange)
+        
+        #draw key
+        context.restore()
+        self.key.draw(context, rect, self._graphs)
         
         label.finish_drawing()
         
@@ -1659,3 +1669,91 @@ class Grid(ChartObject):
         @type color: gtk.gdk.Color
         """
         self.set_property("color", color)
+
+
+class LineChartKey(ChartObject):
+    
+    _width = 0.4
+    _position = KEY_POSITION_TOP_RIGHT
+    _line_length = 10
+    _padding = 10
+    _bg_opacity = 0.75
+    
+    def __init__(self):
+        super(LineChartKey, self).__init__()
+        
+    def _do_draw(self, context, rect, graph_list):
+        set_context_line_style(context, pygtk_chart.LINE_STYLE_SOLID)
+        
+        width = self._width * rect.width
+        height = 0
+        
+        context.push_group()
+        
+        cx = self._padding
+        cy = self._padding
+        context.move_to(0, 0)
+        context.set_source_rgb(0, 0, 0)
+        
+        i = 0
+        item_width = 0
+        for graph in graph_list:
+            if not graph.get_visible(): continue
+            
+            #draw line
+            context.move_to(cx, cy)
+            gc = graph.get_property("color")
+            if gc == COLOR_AUTO:
+                gc = COLORS[i % len(COLORS)]
+                
+            context.set_source_rgb(*color_gdk_to_cairo(gc))
+            set_context_line_style(context, graph.get_line_style())
+            context.rel_line_to(self._line_length, 0)
+            context.stroke()
+            
+            #draw point
+            
+            #draw title
+            l = label.Label((cx + self._line_length + self._padding, cy), graph.get_name())
+            l.set_anchor(label.ANCHOR_LEFT_CENTER)
+            l.set_max_width(width - 3 * self._padding - self._line_length)
+            l.set_wrap(True)
+            l.draw(context, rect)
+            
+            item_width = max(item_width, 3 * self._padding + self._line_length + l.get_real_dimensions()[0])
+            
+            h = max(10, l.get_real_dimensions()[1])
+            if h != 10: h += 2
+            cy += h
+            cy += 10
+            i += 1
+        
+        width = min(width, item_width)
+        height = cy - 10
+        
+        group = context.pop_group()
+        
+        #place key
+        if self._position == KEY_POSITION_TOP_RIGHT:
+            x = rect.x + rect.width - width
+            y = rect.y
+        elif self._position == KEY_POSITION_TOP_LEFT:
+            x = rect.x
+            y = rect.y
+        elif self._position == KEY_POSITION_BOTTOM_LEFT:
+            x = rect.x
+            y = rect.y + rect.height - height
+        elif self._position == KEY_POSITION_BOTTOM_RIGHT:
+            x = rect.x + rect.width - width
+            y = rect.y + rect.height - height
+            
+        context.translate(x, y)
+        
+        context.set_source_rgba(1, 1, 1, self._bg_opacity)
+        context.rectangle(1, 1, width - 1, height - 1)
+        context.fill()
+        context.set_source(group)
+        context.rectangle(0, 0, width, height)
+        context.fill()
+        
+        context.translate(-x, -y)

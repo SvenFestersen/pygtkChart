@@ -39,6 +39,11 @@ from pygtk_chart import label
 
 from pygtk_chart import COLORS, COLOR_AUTO
 
+try:
+    import numpy
+except:
+    pass
+
 
 RANGE_AUTO = "range_auto"
 

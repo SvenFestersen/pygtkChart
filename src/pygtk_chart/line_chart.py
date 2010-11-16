@@ -801,6 +801,12 @@ class LineChart(chart.Chart):
         #private attributes
         self._graphs = []
         
+        #connect to "appearance-changed" signals
+        self.xaxis.connect("appearance-changed", self._cb_appearance_changed)
+        self.yaxis.connect("appearance-changed", self._cb_appearance_changed)
+        self.grid.connect("appearance-changed", self._cb_appearance_changed)
+        self.key.connect("appearance-changed", self._cb_appearance_changed)
+        
     def do_get_property(self, property):
         if property.name == "mouse-over-effect":
             return self._mouse_over_effect
@@ -1790,15 +1796,116 @@ class LineChartKey(ChartObject):
             return self._padding
         elif property.name == "opacity":
             return self._bg_opacity
+        else:
+            return super(LineChartKey, self).do_get_property(property)
             
     def do_set_property(self, property, value):
         if property.name == "width":
             self._width = value
+            self.emit("appearance-changed")
         elif property.name == "position":
             self._position = value
+            self.emit("appearance-changed")
         elif property.name == "line-length":
             self._line_length = value
+            self.emit("appearance-changed")
         elif property.name == "padding":
             self._padding = value
+            self.emit("appearance-changed")
         elif property.name == "opacity":
             self._bg_opacity = value
+            self.emit("appearance-changed")
+        else:
+            super(LineChartKey, self).do_set_property(property, value)
+            
+    def get_line_length(self):
+        """
+        Returns the length of sample lines.
+        
+        @return: int
+        """
+        return self.get_property("line-length")
+        
+    def set_line_length(self, length):
+        """
+        Set the length of sample lines drawn for graphs.
+        
+        @param length: new length
+        @type length: int in range [5, 25]
+        """
+        self.set_property("line-length", length)
+        
+    def get_opacity(self):
+        """
+        Returns the opacity of the key's background.
+        
+        @return: float
+        """
+        return self.get_property("opacity")
+        
+    def set_opacity(self, opacity):
+        """
+        Set the opacity of the key's background.
+        
+        @param opacity: the new opacity
+        @type opacity: float in range [0.0, 1.0]
+        """
+        self.set_property("opacity", opacity)
+        
+    def get_padding(self):
+        """
+        Returns the contents padding.
+        
+        @return: int
+        """
+        return self.get_property("padding")
+        
+    def set_padding(self, padding):
+        """
+        Set the amount of content padding.
+        
+        @param padding: new padding
+        @type padding: int in range [1, 25]
+        """
+        self.set_property("padding", padding)
+            
+    def get_position(self):
+        """
+        Returns a key position constant determining the key's position.
+        
+        @return: position constant
+        """
+        return self.get_property("position")
+        
+        
+    def set_position(self, position):
+        """
+        Set the key's position. position has to be one of the following
+        constants:
+        
+         - line_chart.KEY_POSITION_TOP_RIGHT
+         - line_chart.KEY_POSITION_TOP_LEFT
+         - line_chart.KEY_POSITION_BOTTOM_LEFT
+         - line_chart.KEY_POSITION_BOTTOM_RIGHT
+        
+        @param positon: new position
+        @type position: one of the constants above.
+        """
+        self.set_property("position", position)        
+            
+    def get_width(self):
+        """
+        Returns the relative width of the key.
+        
+        @return: float
+        """
+        return self.get_property("width")
+        
+    def set_width(self, width):
+        """
+        Set the relative width of the key.
+        
+        @param width: new relative width
+        @type width: float in range [0.0, 1.0]
+        """
+        self.set_property("width", width)

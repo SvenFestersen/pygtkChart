@@ -1140,7 +1140,10 @@ class Axis(ChartObject):
         elif property.name == "logscale":
             self._logscale = value
             if value:
+                self._old_tic_label_format = self._tic_label_format
                 self._tic_label_format = lambda x: "%.2g" % math.pow(10, x)
+            else:
+                self._tic_label_format = self._old_tic_label_format
         else:
             super(Axis, self).do_set_property(property, value)
             
@@ -1167,6 +1170,23 @@ class Axis(ChartObject):
         @type label: string
         """
         self.set_property("label", label)
+        
+    def get_logscale(self):
+        """
+        Returns True if the axis uses logarithmic scale.
+        
+        @return: boolean.
+        """
+        return self.get_property("logscale")
+        
+    def set_logscale(self, logscale):
+        """
+        Set whether the axis should use a lograithmic scale.
+        
+        @type param: boolean.
+        """
+        self.set_property("logscale", logscale)
+        self.emit("appearance-changed")
         
     def get_show_label(self):
         """

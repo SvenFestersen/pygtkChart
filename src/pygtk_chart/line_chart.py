@@ -1681,6 +1681,7 @@ class LineChartKey(ChartObject):
     
     def __init__(self):
         super(LineChartKey, self).__init__()
+        self.set_visible(False)
         
     def _do_draw(self, context, rect, graph_list):
         set_context_line_style(context, pygtk_chart.LINE_STYLE_SOLID)

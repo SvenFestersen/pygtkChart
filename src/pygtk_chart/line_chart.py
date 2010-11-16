@@ -1673,6 +1673,22 @@ class Grid(ChartObject):
 
 class LineChartKey(ChartObject):
     
+    __gproperties__ = {"width": (gobject.TYPE_FLOAT, "relative width of key",
+                                    "The relative width of the key.",
+                                    0.1, 0.9, 0.4, gobject.PARAM_READWRITE),
+                        "position": (gobject.TYPE_INT, "key position",
+                                        "Position of the key.", 0, 3, 0,
+                                        gobject.PARAM_READWRITE),
+                        "line-length": (gobject.TYPE_INT, "sample line length",
+                                        "Length of the sample line.", 5, 25,
+                                        10, gobject.PARAM_READWRITE),
+                        "padding": (gobject.TYPE_INT, "key padding",
+                                    "key padding", 1, 25, 10,
+                                    gobject.PARAM_READWRITE),
+                        "opacity": (gobject.TYPE_FLOAT, "key opacity",
+                                    "Opacity of the key.", 0.0, 1.0, 0.75,
+                                    gobject.PARAM_READWRITE)}
+        
     _width = 0.4
     _position = KEY_POSITION_TOP_RIGHT
     _line_length = 10
@@ -1762,3 +1778,27 @@ class LineChartKey(ChartObject):
         context.fill()
         
         context.translate(-x, -y)
+        
+    def do_get_property(self, property):
+        if property.name == "width":
+            return self._width
+        elif property.name == "position":
+            return self._position
+        elif property.name == "line-length":
+            return self._line_length
+        elif property.name == "padding":
+            return self._padding
+        elif property.name == "opacity":
+            return self._bg_opacity
+            
+    def do_set_property(self, property, value):
+        if property.name == "width":
+            self._width = value
+        elif property.name == "position":
+            self._position = value
+        elif property.name == "line-length":
+            self._line_length = value
+        elif property.name == "padding":
+            self._padding = value
+        elif property.name == "opacity":
+            self._bg_opacity = value

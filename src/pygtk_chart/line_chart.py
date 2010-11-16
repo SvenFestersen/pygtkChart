@@ -1707,25 +1707,29 @@ class LineChartKey(ChartObject):
                 gc = COLORS[i % len(COLORS)]
                 
             context.set_source_rgb(*color_gdk_to_cairo(gc))
-            set_context_line_style(context, graph.get_line_style())
-            context.rel_line_to(self._line_length, 0)
-            context.stroke()
+            if graph.get_line_style() != pygtk_chart.LINE_STYLE_NONE:
+                set_context_line_style(context, graph.get_line_style())
+                context.rel_line_to(self._line_length, 0)
+                context.stroke()
             
             #draw point
+            graph_draw_point(context, cx + self._line_length, cy, graph.get_point_size(), graph.get_point_style())
             
             #draw title
-            l = label.Label((cx + self._line_length + self._padding, cy), graph.get_name())
-            l.set_anchor(label.ANCHOR_LEFT_CENTER)
+            l = label.Label((cx + self._line_length + self._padding, cy - 8), graph.get_name())
+            l.set_anchor(label.ANCHOR_TOP_LEFT)
             l.set_max_width(width - 3 * self._padding - self._line_length)
             l.set_wrap(True)
             l.draw(context, rect)
             
             item_width = max(item_width, 3 * self._padding + self._line_length + l.get_real_dimensions()[0])
             
-            h = max(10, l.get_real_dimensions()[1])
-            if h != 10: h += 2
-            cy += h
-            cy += 10
+            if l.get_real_dimensions()[1] <= 10:
+                cy += 20
+            else:
+                cy += l.get_real_dimensions()[1]
+                cy += 10
+
             i += 1
         
         width = min(width, item_width)

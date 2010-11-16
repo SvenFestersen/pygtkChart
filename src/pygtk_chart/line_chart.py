@@ -156,7 +156,7 @@ def graph_draw_points(graph, context, rect, data, xrange, yrange, ppu_x, ppu_y, 
             else:
                 graph_draw_point_pixbuf(context, posx, posy, point_style)
                 
-def graph_draw_lines(context, rect, data, xrange, yrange, ppu_x, ppu_y, line_style, line_width, color):
+def graph_draw_lines(context, rect, data, xrange, yrange, ppu_x, ppu_y, line_style, line_width, color, logscale):
     context.set_source_rgb(*color_gdk_to_cairo(color))
     context.set_line_width(line_width)
     if line_style != pygtk_chart.LINE_STYLE_NONE:
@@ -164,7 +164,10 @@ def graph_draw_lines(context, rect, data, xrange, yrange, ppu_x, ppu_y, line_sty
         xdata, ydata = data
         first_point = True
         for i in range(0, len(xdata)):
-            x, y = xdata[i], ydata[i]
+            x = xdata[i]
+            y = ydata[i]
+            if logscale[0]: x = math.log10(x)
+            if logscale[1]: y = math.log10(y)
             if not xrange[0] <= x <= xrange[1]: continue
             posx = rect.x + ppu_x * (x - xrange[0])
             posy = rect.y + rect.height - ppu_y * (y - yrange[0])
@@ -402,13 +405,13 @@ class Graph(ChartObject):
         """
         self._xrange, self._yrange = graph_make_ranges(self._data)
         
-    def _do_draw(self, context, rect, xrange, yrange, color):
+    def _do_draw(self, context, rect, xrange, yrange, color, logscale):
         #ppu: pixel per unit
         ppu_x = float(rect.width) / abs(xrange[0] - xrange[1])
         ppu_y = float(rect.height) / abs(yrange[0] - yrange[1])
         
         graph_draw_fill_to(context, rect, self._data, xrange, yrange, ppu_x, ppu_y, self._fill_to, color, self._fill_opacity)
-        graph_draw_lines(context, rect, self._data, xrange, yrange, ppu_x, ppu_y, self._line_style, self._line_width, color)                
+        graph_draw_lines(context, rect, self._data, xrange, yrange, ppu_x, ppu_y, self._line_style, self._line_width, color, logscale)                
         graph_draw_points(self, context, rect, self._data, xrange, yrange, ppu_x, ppu_y, self._point_style, color, self._point_size, self._highlighted)    
         
     def get_points(self):
@@ -692,7 +695,7 @@ class Graph(ChartObject):
         
         
 
-def chart_calculate_ranges(xrange, yrange, graphs, extend_x=(0, 0), extend_y=(0, 0)):
+def chart_calculate_ranges(xrange, yrange, graphs, extend_x=(0, 0), extend_y=(0, 0), logscale=(False, False)):
     if xrange != RANGE_AUTO:
         #the xrange was set manually => no calculation neccessary
         calc_xrange = xrange
@@ -733,30 +736,40 @@ def chart_calculate_ranges(xrange, yrange, graphs, extend_x=(0, 0), extend_y=(0,
             delta = abs(calc_yrange[1] - calc_yrange[0])
             calc_yrange = (calc_yrange[0] - delta * extend_y[0],
                             calc_yrange[1] + delta * extend_y[1])
+                            
+    if logscale[0]:
+        if calc_xrange[0] <= 0: calc_xrange = (0.001, calc_xrange[1])
+        calc_xrange = map(math.log10, calc_xrange)
+    if logscale[1]:
+        if calc_yrange[0] <= 0: calc_yrange = (0.001, calc_yrange[1])
+        calc_yrange = map(math.log10, calc_yrange)
         
     return calc_xrange, calc_yrange
     
     
-def chart_calculate_tics_for_range(crange):
+def chart_calculate_tics_for_range(crange, logscale):
     """
     This function calculates the tics that should be drawn for a given
     range.
     """
     tics = []
-    delta = abs(crange[0] - crange[1])
-    exp = int(math.log10(delta))
-    
-    ten_exp = math.pow(10, exp) #store this value for performance reasons
-    
-    if delta / ten_exp < 1:
-        ten_exp = ten_exp / 10
-    
-    m = int(crange[0] / ten_exp) - 1
-    n = int(crange[1] / ten_exp) + 1
-    for i in range(m, n + 1):
-        for j in range(0, 10):
-            tics.append((i + j / 10.0) * ten_exp)
-    tics = filter(lambda x: crange[0] <= x <= crange[1], tics) #filter out tics not in range (there can be one or two)
+    if not logscale:
+        delta = abs(crange[0] - crange[1])
+        exp = int(math.log10(delta))
+        
+        ten_exp = math.pow(10, exp) #store this value for performance reasons
+        
+        if delta / ten_exp < 1:
+            ten_exp = ten_exp / 10
+        
+        m = int(crange[0] / ten_exp) - 1
+        n = int(crange[1] / ten_exp) + 1
+        for i in range(m, n + 1):
+            for j in range(0, 10):
+                tics.append((i + j / 10.0) * ten_exp)
+        tics = filter(lambda x: crange[0] <= x <= crange[1], tics) #filter out tics not in range (there can be one or two)
+    else:
+        tics = chart_calculate_tics_for_range(crange, False)
     return tics
 
 
@@ -870,9 +883,12 @@ class LineChart(chart.Chart):
             #extend the y range 10% at the top to show peak marker
             extend_y = extend_y[0], extend_y[1] + 0.1
         
-        calculated_xrange, calculated_yrange = chart_calculate_ranges(self._xrange, self._yrange, self._graphs, extend_x, extend_y)
-        xtics = chart_calculate_tics_for_range(calculated_xrange)
-        ytics = chart_calculate_tics_for_range(calculated_yrange)
+        logscale = (self.xaxis.get_property("logscale"),
+                    self.yaxis.get_property("logscale"))
+        
+        calculated_xrange, calculated_yrange = chart_calculate_ranges(self._xrange, self._yrange, self._graphs, extend_x, extend_y, logscale)
+        xtics = chart_calculate_tics_for_range(calculated_xrange, logscale[0])
+        ytics = chart_calculate_tics_for_range(calculated_yrange, logscale[1])
         rect, xtics_drawn_at, ytics_drawn_at = self._draw_axes(context, rect, calculated_xrange, calculated_yrange, xtics, ytics)
         
         #restrict drawing area
@@ -924,12 +940,14 @@ class LineChart(chart.Chart):
         self.grid.draw(context, rect, xtics, ytics, self.xaxis, self.yaxis)
         
     def _draw_graphs(self, context, rect, calculated_xrange, calculated_yrange):
+        logscale = (self.xaxis.get_property("logscale"),
+                    self.yaxis.get_property("logscale"))
         chart.init_sensitive_areas()
         for i, graph in enumerate(self._graphs):
             gc = graph.get_property("color")
             if gc == COLOR_AUTO:
                 gc = COLORS[i % len(COLORS)]
-            graph.draw(context, rect, calculated_xrange, calculated_yrange, gc)
+            graph.draw(context, rect, calculated_xrange, calculated_yrange, gc, logscale)
             
     def _draw_peak_marker(self, context, rect, xrange, yrange):
         if self._peak_marker != None:
@@ -1063,18 +1081,22 @@ class Axis(ChartObject):
                         "show-other-side": (gobject.TYPE_BOOLEAN,
                                             "also draw axis on the opposite side",
                                             "Set whether to also draw axis on theopposite side.",
-                                            True, gobject.PARAM_READWRITE)}
+                                            True, gobject.PARAM_READWRITE),
+                        "logscale": (gobject.TYPE_BOOLEAN, "set logscale",
+                                        "Set whether to use a logarithmic scale on this axis.",
+                                        False, gobject.PARAM_READWRITE)}
                                     
     _label = ""
     _show_label = True
     _label_spacing = 3
     _show_tics = True
     _show_tic_labels = True
-    _tic_label_format = str
+    _tic_label_format = lambda self, x: "%.2g" % x
     _tics_size = 3
     _min_tic_spacing = 35 
     _offset_by_tic_label = 0
     _show_other_side = True
+    _logscale = False
     
     def __init__(self):
         super(Axis, self).__init__()
@@ -1095,6 +1117,8 @@ class Axis(ChartObject):
             return self._tic_label_format
         elif property.name == "show-other-side":
             return self._show_other_side
+        elif property.name == "logscale":
+            return self._logscale
         else:
             return super(Axis, self).do_get_property(property)
         
@@ -1113,6 +1137,10 @@ class Axis(ChartObject):
             self._tic_label_format = value
         elif property.name == "show-other-side":
             self._show_other_side = value
+        elif property.name == "logscale":
+            self._logscale = value
+            if value:
+                self._tic_label_format = lambda x: "%.2g" % math.pow(10, x)
         else:
             super(Axis, self).do_set_property(property, value)
             

@@ -1678,6 +1678,11 @@ class Grid(ChartObject):
 
 
 class LineChartKey(ChartObject):
+    """
+    This class is used to display a simple key on a LineChart widget. You
+    don't need to create it yourself, every LineChart has an instance of
+    this class stored in LineChart.key.
+    """
     
     __gproperties__ = {"width": (gobject.TYPE_FLOAT, "relative width of key",
                                     "The relative width of the key.",

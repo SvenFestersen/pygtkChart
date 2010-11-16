@@ -769,7 +769,15 @@ def chart_calculate_tics_for_range(crange, logscale):
                 tics.append((i + j / 10.0) * ten_exp)
         tics = filter(lambda x: crange[0] <= x <= crange[1], tics) #filter out tics not in range (there can be one or two)
     else:
-        tics = chart_calculate_tics_for_range(crange, False)
+        #tics = chart_calculate_tics_for_range(crange, False)
+        lower = int(crange[0])
+        upper = int(crange[1]) + 1
+        current = lower
+        while current < upper:
+            for i in range(1, 10):
+                tics.append(i * math.pow(10, current))
+            current += 1
+        tics = filter(lambda x: math.pow(10, crange[0]) <= x <= math.pow(10, crange[1]), tics)
     return tics
 
 
@@ -1139,11 +1147,6 @@ class Axis(ChartObject):
             self._show_other_side = value
         elif property.name == "logscale":
             self._logscale = value
-            if value:
-                self._old_tic_label_format = self._tic_label_format
-                self._tic_label_format = lambda x: "%.2g" % math.pow(10, x)
-            else:
-                self._tic_label_format = self._old_tic_label_format
         else:
             super(Axis, self).do_set_property(property, value)
             
@@ -1364,20 +1367,36 @@ class XAxis(Axis):
             ppu = float(rect.width) / abs(xrange[0] - xrange[1])
             y = rect.y + rect.height
             last_pos = -100
-            for tic in tics:
-                x = rect.x + ppu * (tic - xrange[0])
-                if abs(x - last_pos) >= self._min_tic_spacing:
-                    context.move_to(x, y)
-                    context.rel_line_to(0, -self._tics_size)
-                    context.stroke()
-                    
-                    if self._show_other_side:
-                        context.move_to(x, rect.y)
-                        context.rel_line_to(0, self._tics_size)
+            if not self._logscale:
+                for tic in tics:
+                    x = rect.x + ppu * (tic - xrange[0])
+                    if abs(x - last_pos) >= self._min_tic_spacing:
+                        context.move_to(x, y)
+                        context.rel_line_to(0, -self._tics_size)
                         context.stroke()
-                    
-                    last_pos = x
-                    tics_drawn_at.append((tic, x))
+                        
+                        if self._show_other_side:
+                            context.move_to(x, rect.y)
+                            context.rel_line_to(0, self._tics_size)
+                            context.stroke()
+                        
+                        last_pos = x
+                        tics_drawn_at.append((tic, x))
+            else:
+                for tic in tics:
+                    x = rect.x + ppu * (math.log10(tic) - xrange[0])
+                    if abs(x - last_pos) >= self._min_tic_spacing:
+                        context.move_to(x, y)
+                        context.rel_line_to(0, -self._tics_size)
+                        context.stroke()
+                        
+                        if self._show_other_side:
+                            context.move_to(x, rect.y)
+                            context.rel_line_to(0, self._tics_size)
+                            context.stroke()
+                        
+                        last_pos = x
+                        tics_drawn_at.append((tic, x))
         return tics_drawn_at
         
     def _draw_label(self, context, rect):
@@ -1444,20 +1463,36 @@ class YAxis(Axis):
             ppu = float(rect.height) / abs(yrange[0] - yrange[1])
             x = rect.x
             last_pos = -100
-            for tic in tics:
-                y = rect.y + rect.height - ppu * (tic - yrange[0])
-                if abs(y - last_pos) >= self._min_tic_spacing:
-                    context.move_to(x, y)
-                    context.rel_line_to(self._tics_size, 0)
-                    context.stroke()
-                    
-                    if self._show_other_side:
-                        context.move_to(x + rect.width, y)
-                        context.rel_line_to(-self._tics_size, 0)
+            if not self._logscale:
+                for tic in tics:
+                    y = rect.y + rect.height - ppu * (tic - yrange[0])
+                    if abs(y - last_pos) >= self._min_tic_spacing:
+                        context.move_to(x, y)
+                        context.rel_line_to(self._tics_size, 0)
                         context.stroke()
-                    
-                    last_pos = y
-                    tics_drawn_at.append((tic, y))
+                        
+                        if self._show_other_side:
+                            context.move_to(x + rect.width, y)
+                            context.rel_line_to(-self._tics_size, 0)
+                            context.stroke()
+                        
+                        last_pos = y
+                        tics_drawn_at.append((tic, y))
+            else:
+                for tic in tics:
+                    y = rect.y + rect.height - ppu * (math.log10(tic) - yrange[0])
+                    if abs(y - last_pos) >= 10:
+                        context.move_to(x, y)
+                        context.rel_line_to(self._tics_size, 0)
+                        context.stroke()
+                        
+                        if self._show_other_side:
+                            context.move_to(x + rect.width, y)
+                            context.rel_line_to(-self._tics_size, 0)
+                            context.stroke()
+                        
+                        last_pos = y
+                        tics_drawn_at.append((tic, y))
         return tics_drawn_at
         
     def _draw_label(self, context, rect):

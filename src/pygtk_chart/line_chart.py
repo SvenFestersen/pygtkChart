@@ -695,14 +695,14 @@ class Graph(ChartObject):
         
         
 
-def chart_calculate_ranges(xrange, yrange, graphs, extend_x=(0, 0), extend_y=(0, 0), logscale=(False, False)):
+def chart_calculate_ranges(xrange, yrange, x_graphs, y_graphs, extend_x=(0, 0), extend_y=(0, 0), logscale=(False, False)):
     if xrange != RANGE_AUTO:
         #the xrange was set manually => no calculation neccessary
         calc_xrange = xrange
     else:
         #calculate the xrange from graphs. (0, 1) if there is no graph
         calc_xrange = None
-        for graph in graphs:
+        for graph in x_graphs:
             if not graph.get_visible() or len(graph) == 0: continue
             g_xrange, g_yrange = graph.get_ranges()
             if calc_xrange == None:
@@ -722,7 +722,7 @@ def chart_calculate_ranges(xrange, yrange, graphs, extend_x=(0, 0), extend_y=(0,
     else:
         #calculate the yrange from graphs. (0, 1) if there is no graph
         calc_yrange = None
-        for graph in graphs:
+        for graph in y_graphs:
             if not graph.get_visible() or len(graph) == 0: continue
             g_xrange, g_yrange = graph.get_ranges()
             if calc_yrange == None:
@@ -805,22 +805,34 @@ class LineChart(chart.Chart):
                                             "Set how to extend the yrange.",
                                             gobject.PARAM_READWRITE)}
     
-    _xrange = RANGE_AUTO
-    _yrange = RANGE_AUTO
+    _xrange1 = RANGE_AUTO
+    _yrange1 = RANGE_AUTO
+    _xrange2 = RANGE_AUTO
+    _yrange2 = RANGE_AUTO
     _mouse_over_effect = True
     _extend_xrange = (0, 0)
     _extend_yrange = (0, 0)
     _peak_marker = None
     
+    _graphs_xaxis1 = []
+    _graphs_xaxis2 = []
+    _graphs_yaxis1 = []
+    _graphs_yaxis2 = []
+    
     def __init__(self):
         super(LineChart, self).__init__()
         #public attributes
         self.xaxis = XAxis()
+        self.xaxis2 = XAxis()
         self.yaxis = YAxis()
+        self.yaxis2 = YAxis()
         self.grid = Grid()
         self.key = LineChartKey()
         #private attributes
         self._graphs = []
+        
+        #init some properties
+        self.yaxis2.set_visible(True)
         
         #connect to "appearance-changed" signals
         self.xaxis.connect("appearance-changed", self._cb_appearance_changed)
@@ -891,24 +903,37 @@ class LineChart(chart.Chart):
             #extend the y range 10% at the top to show peak marker
             extend_y = extend_y[0], extend_y[1] + 0.1
         
-        logscale = (self.xaxis.get_property("logscale"),
+        logscale1 = (self.xaxis.get_property("logscale"),
                     self.yaxis.get_property("logscale"))
+        logscale2 = (self.xaxis2.get_property("logscale"),
+                    self.yaxis2.get_property("logscale"))
         
-        calculated_xrange, calculated_yrange = chart_calculate_ranges(self._xrange, self._yrange, self._graphs, extend_x, extend_y, logscale)
-        xtics = chart_calculate_tics_for_range(calculated_xrange, logscale[0])
-        ytics = chart_calculate_tics_for_range(calculated_yrange, logscale[1])
-        rect, xtics_drawn_at, ytics_drawn_at = self._draw_axes(context, rect, calculated_xrange, calculated_yrange, xtics, ytics)
+        calculated_xrange1a, calculated_yrange1a = chart_calculate_ranges(self._xrange1, self._yrange1, self._graphs_xaxis1, self._graphs_yaxis1, extend_x, extend_y, (logscale1[0], logscale1[1]))
+        calculated_xrange1b, calculated_yrange2a = chart_calculate_ranges(self._xrange1, self._yrange2, self._graphs_xaxis1, self._graphs_yaxis2, extend_x, extend_y, (logscale1[0], logscale2[1]))
+        calculated_xrange2a, calculated_yrange1b = chart_calculate_ranges(self._xrange2, self._yrange1, self._graphs_xaxis2, self._graphs_yaxis1, extend_x, extend_y, (logscale2[0], logscale1[1]))
+        calculated_xrange2b, calculated_yrange2b = chart_calculate_ranges(self._xrange2, self._yrange2, self._graphs_xaxis2, self._graphs_yaxis2, extend_x, extend_y, (logscale2[0], logscale2[1]))
+        
+        calculated_xrange1 = min(calculated_xrange1a[0], calculated_xrange1b[0]), max(calculated_xrange1a[1], calculated_xrange1b[1])
+        calculated_yrange1 = min(calculated_yrange1a[0], calculated_yrange1b[0]), max(calculated_yrange1a[1], calculated_yrange1b[1])
+        calculated_xrange2 = min(calculated_xrange2a[0], calculated_xrange2b[0]), max(calculated_xrange2a[1], calculated_xrange2b[1])
+        calculated_yrange2 = min(calculated_yrange2a[0], calculated_yrange2b[0]), max(calculated_yrange2a[1], calculated_yrange2b[1])
+        
+        xtics1 = chart_calculate_tics_for_range(calculated_xrange1, logscale1[0])
+        ytics1 = chart_calculate_tics_for_range(calculated_yrange1, logscale1[1])
+        xtics2 = chart_calculate_tics_for_range(calculated_xrange2, logscale2[0])
+        ytics2 = chart_calculate_tics_for_range(calculated_yrange2, logscale2[1])
+        rect, xtics1_drawn_at, ytics1_drawn_at, xtics2_drawn_at, ytics2_drawn_at = self._draw_axes(context, rect, calculated_xrange1, calculated_yrange1, calculated_xrange2, calculated_yrange2, xtics1, ytics1, xtics2, ytics2)
         
         #restrict drawing area
         context.save()
         context.rectangle(rect.x + 1, rect.y + 1, rect.width - 1, rect.height - 1)
         context.clip()
         
-        self._draw_grid(context, rect, xtics_drawn_at, ytics_drawn_at)
+        self._draw_grid(context, rect, xtics1_drawn_at, ytics1_drawn_at)
         
-        self._draw_graphs(context, rect, calculated_xrange, calculated_yrange)
+        self._draw_graphs(context, rect, calculated_xrange1, calculated_yrange1, calculated_xrange2, calculated_yrange2)
         
-        self._draw_peak_marker(context, rect, calculated_xrange, calculated_yrange)
+        self._draw_peak_marker(context, rect, calculated_xrange1, calculated_yrange1)
         
         #draw key
         context.restore()
@@ -936,26 +961,61 @@ class LineChart(chart.Chart):
         rect_y = int(rect.y + title_height + 2 * self._padding)
         return gtk.gdk.Rectangle(rect_x, rect_y, rect_width, rect_height)
         
-    def _draw_axes(self, context, rect, calculated_xrange, calculated_yrange, xtics, ytics):
-        rect = self.xaxis.make_rect_label_offset(context, rect, xtics)
-        rect = self.yaxis.make_rect_label_offset(context, rect, ytics)
-        xtics_drawn_at = self.xaxis.draw(context, rect, calculated_xrange, xtics)
-        ytics_drawn_at = self.yaxis.draw(context, rect, calculated_yrange, ytics)
+    def _draw_axes(self, context, rect, calculated_xrange1, calculated_yrange1, calculated_xrange2, calculated_yrange2, xtics1, ytics1, xtics2, ytics2):
+        rect = self.xaxis.make_rect_label_offset(context, rect, xtics1)
+        rect = self.yaxis.make_rect_label_offset(context, rect, ytics1)
+        rect = self.xaxis2.make_rect_label_offset(context, rect, xtics2, True)
+        rect = self.yaxis2.make_rect_label_offset(context, rect, ytics2, True)
+        #rect = self.xaxis2.make_rect_label_offset(context, rect, xtics, True)
+        #rect = self.yaxis2.make_rect_label_offset(context, rect, ytics, True)
         
-        return rect, xtics_drawn_at, ytics_drawn_at
+        if self.xaxis2.get_visible() and self._graphs_xaxis2 != []:
+            self.xaxis.set_property("show-other-side", False)
+        if self.yaxis2.get_visible() and self._graphs_yaxis2 != []:
+            self.yaxis.set_property("show-other-side", False)
+        
+        xtics1_drawn_at = self.xaxis.draw(context, rect, calculated_xrange1, xtics1)
+        ytics1_drawn_at = self.yaxis.draw(context, rect, calculated_yrange1, ytics1)
+        
+        xtics2_drawn_at = []
+        ytics2_drawn_at = []
+        if self._graphs_xaxis2 != []:
+            xtics2_drawn_at = self.xaxis2.draw(context, rect, calculated_xrange2, xtics2, True)
+        if self._graphs_yaxis2 != []:
+            ytics2_drawn_at = self.yaxis2.draw(context, rect, calculated_yrange2, ytics2, True)
+        
+        return rect, xtics1_drawn_at, ytics1_drawn_at, xtics2_drawn_at, ytics2_drawn_at
         
     def _draw_grid(self, context, rect, xtics, ytics):
         self.grid.draw(context, rect, xtics, ytics, self.xaxis, self.yaxis)
         
-    def _draw_graphs(self, context, rect, calculated_xrange, calculated_yrange):
-        logscale = (self.xaxis.get_property("logscale"),
+    def _draw_graphs(self, context, rect, calculated_xrange1, calculated_yrange1, calculated_xrange2, calculated_yrange2):
+        logscale1 = (self.xaxis.get_property("logscale"),
                     self.yaxis.get_property("logscale"))
+        logscale2 = (self.xaxis2.get_property("logscale"),
+                    self.yaxis2.get_property("logscale"))
         chart.init_sensitive_areas()
         for i, graph in enumerate(self._graphs):
             gc = graph.get_property("color")
             if gc == COLOR_AUTO:
                 gc = COLORS[i % len(COLORS)]
-            graph.draw(context, rect, calculated_xrange, calculated_yrange, gc, logscale)
+            
+            logx = False
+            logy = False
+            
+            if graph in self._graphs_xaxis1:
+                calculated_xrange = calculated_xrange1
+                logx = logscale1[0]
+            elif graph in self._graphs_xaxis2:
+                calculated_xrange = calculated_xrange2
+                logx = logscale2[0]
+            if graph in self._graphs_yaxis1:
+                calculated_yrange = calculated_yrange1
+                logy = logscale1[1]
+            elif graph in self._graphs_yaxis2:
+                calculated_yrange = calculated_yrange2
+                logy = logscale2[1]
+            graph.draw(context, rect, calculated_xrange, calculated_yrange, gc, (logx, logy))
             
     def _draw_peak_marker(self, context, rect, xrange, yrange):
         if self._peak_marker != None:
@@ -974,12 +1034,26 @@ class LineChart(chart.Chart):
             context.close_path()
             context.fill()
         
-    def add_graph(self, graph):
+    def add_graph(self, graph, xaxis=1, yaxis=1):
         self._graphs.append(graph)
+        
+        if xaxis == 1:
+            self._graphs_xaxis1.append(graph)
+        else:
+            self._graphs_xaxis2.append(graph)
+        if yaxis == 1:
+            self._graphs_yaxis1.append(graph)
+        else:
+            self._graphs_yaxis2.append(graph)
+            
         self.queue_draw()
         
     def clear(self):
         self._graphs = []
+        self._graphs_xaxis1 = []
+        self._graphs_xaxis2 = []
+        self._graphs_yaxis1 = []
+        self._graphs_yaxis2 = []
         self.queue_draw()
         
     def get_mouse_over_effect(self):
@@ -1344,28 +1418,34 @@ class XAxis(Axis):
         super(XAxis, self).__init__()
         self._label = "x"
     
-    def _do_draw(self, context, rect, calculated_xrange, tics):
-        self._draw_label(context, rect)
+    def _do_draw(self, context, rect, calculated_xrange, tics, top=False):
+        self._draw_label(context, rect, top)
         context.set_line_width(1)
         context.set_source_rgb(0, 0, 0)
-        context.move_to(rect.x, rect.y + rect.height + 0.5)
+        if not top:
+            context.move_to(rect.x, rect.y + rect.height + 0.5)
+        else:
+            context.move_to(rect.x, rect.y + 0.5)
         context.rel_line_to(rect.width, 0)
         context.stroke()
         
-        if self._show_other_side:
+        if self._show_other_side and not top:
             context.move_to(rect.x, rect.y + 0.5)
             context.rel_line_to(rect.width, 0)
             context.stroke()
         
-        tics_drawn_at = self._draw_tics(context, rect, calculated_xrange, tics)
-        self._draw_tic_labels(context, rect, tics_drawn_at)
+        tics_drawn_at = self._draw_tics(context, rect, calculated_xrange, tics, top)
+        self._draw_tic_labels(context, rect, tics_drawn_at, top)
         return tics_drawn_at
         
-    def _draw_tics(self, context, rect, xrange, tics):
+    def _draw_tics(self, context, rect, xrange, tics, top):
         tics_drawn_at = []
         if self._show_tics:
             ppu = float(rect.width) / abs(xrange[0] - xrange[1])
-            y = rect.y + rect.height
+            if not top:
+                y = rect.y + rect.height
+            else:
+                y = rect.y + self._tics_size
             last_pos = -100
             if not self._logscale:
                 for tic in tics:
@@ -1399,26 +1479,39 @@ class XAxis(Axis):
                         tics_drawn_at.append((tic, x))
         return tics_drawn_at
         
-    def _draw_label(self, context, rect):
+    def _draw_label(self, context, rect, top):
         if self._label and self._show_label:
-            pos = rect.x + rect.width / 2, rect.y + rect.height + self._offset_by_tic_label + self._label_spacing
-            label_object = label.Label(pos, self._label, anchor=label.ANCHOR_TOP_CENTER)
+            if not top:
+                pos = rect.x + rect.width / 2, rect.y + rect.height + self._offset_by_tic_label + self._label_spacing
+                anc = label.ANCHOR_TOP_CENTER
+            else:
+                pos = rect.x + rect.width / 2, rect.y - self._offset_by_tic_label - self._label_spacing
+                anc = label.ANCHOR_BOTTOM_CENTER
+            label_object = label.Label(pos, self._label, anchor=anc)
             label_object.set_use_markup(True)
             label_object.draw(context, rect)
             
-    def _draw_tic_labels(self, context, rect, tics_drawn_at):
+    def _draw_tic_labels(self, context, rect, tics_drawn_at, top):
         if self._show_tics and self._show_tic_labels:
-            posy = rect.y + rect.height + self._label_spacing
+            if not top:
+                posy = rect.y + rect.height + self._label_spacing
+                anc = label.ANCHOR_TOP_CENTER
+            else:
+                posy = rect.y - self._label_spacing
+                anc = label.ANCHOR_BOTTOM_CENTER
             for x, posx in tics_drawn_at:
                 pos = (posx, posy)
-                label_object = label.Label(pos, self._tic_label_format(x), anchor=label.ANCHOR_TOP_CENTER)
+                label_object = label.Label(pos, self._tic_label_format(x), anchor=anc)
                 label_object.set_fixed(True)
                 label_object.draw(context, rect)
                 
-    def make_rect_label_offset(self, context, rect, tics):
+    def make_rect_label_offset(self, context, rect, tics, top=False):
         offset = 0
         if self._label and self._show_label:
-            pos = rect.x + rect.width / 2, rect.y + rect.height
+            if not top:
+                pos = rect.x + rect.width / 2, rect.y + rect.height
+            else:
+                pos = rect.x + rect.width / 2, rect.y
             label_object = label.Label(pos, self._label, anchor=label.ANCHOR_TOP_CENTER)
             label_object.set_max_width(rect.width)
             label_object.set_use_markup(True)
@@ -1440,28 +1533,34 @@ class YAxis(Axis):
         super(YAxis, self).__init__()
         self._label = "y"
     
-    def _do_draw(self, context, rect, calculated_yrange, tics):
-        self._draw_label(context, rect)
+    def _do_draw(self, context, rect, calculated_yrange, tics, right=False):
+        self._draw_label(context, rect, right)
         context.set_line_width(1)
         context.set_source_rgb(0, 0, 0)
-        context.move_to(rect.x + 0.5, rect.y)
+        if not right:
+            context.move_to(rect.x + 0.5, rect.y)
+        else:
+            context.move_to(rect.x + rect.width + 0.5, rect.y)
         context.rel_line_to(0, rect.height)
         context.stroke()
         
-        if self._show_other_side:
+        if self._show_other_side and not right:
             context.move_to(rect.x + rect.width + 0.5, rect.y)
             context.rel_line_to(0, rect.height)
             context.stroke()
         
-        tics_drawn_at = self._draw_tics(context, rect, calculated_yrange, tics)
-        self._draw_tic_labels(context, rect, tics_drawn_at)
+        tics_drawn_at = self._draw_tics(context, rect, calculated_yrange, tics, right)
+        self._draw_tic_labels(context, rect, tics_drawn_at, right)
         return tics_drawn_at
         
-    def _draw_tics(self, context, rect, yrange, tics):
+    def _draw_tics(self, context, rect, yrange, tics, right):
         tics_drawn_at = []
         if self._show_tics:
             ppu = float(rect.height) / abs(yrange[0] - yrange[1])
-            x = rect.x
+            if not right:
+                x = rect.x
+            else:
+                x = rect.x + rect.width - self._tics_size
             last_pos = -100
             if not self._logscale:
                 for tic in tics:
@@ -1495,26 +1594,37 @@ class YAxis(Axis):
                         tics_drawn_at.append((tic, y))
         return tics_drawn_at
         
-    def _draw_label(self, context, rect):
+    def _draw_label(self, context, rect, right):
         if self._label and self._show_label:
-            pos = rect.x - self._offset_by_tic_label - self._label_spacing, rect.y + rect.height / 2
+            if not right:
+                pos = rect.x - self._offset_by_tic_label - self._label_spacing, rect.y + rect.height / 2
+                angle = 90
+            else:
+                pos = rect.x + rect.width + self._offset_by_tic_label + self._label_spacing, rect.y + rect.height / 2
+                angle = 270
+                
             label_object = label.Label(pos, self._label, anchor=label.ANCHOR_BOTTOM_CENTER)
-            label_object.set_rotation(90)
+            label_object.set_rotation(angle)
             label_object.set_wrap(False)
             label_object.set_use_markup(True)
             label_object.set_max_width(rect.height)
             label_object.draw(context, rect)
             
-    def _draw_tic_labels(self, context, rect, tics_drawn_at):
+    def _draw_tic_labels(self, context, rect, tics_drawn_at, right):
         if self._show_tics and self._show_tic_labels:
-            posx = rect.x - self._label_spacing
+            if not right:
+                posx = rect.x - self._label_spacing
+                anc = label.ANCHOR_RIGHT_CENTER
+            else:
+                posx = rect.x + rect.width + self._label_spacing
+                anc = label.ANCHOR_LEFT_CENTER
             for y, posy in tics_drawn_at:
                 pos = (posx, posy)
-                label_object = label.Label(pos, self._tic_label_format(y), anchor=label.ANCHOR_RIGHT_CENTER)
+                label_object = label.Label(pos, self._tic_label_format(y), anchor=anc)
                 label_object.set_fixed(True)
                 label_object.draw(context, rect)
         
-    def make_rect_label_offset(self, context, rect, tics):
+    def make_rect_label_offset(self, context, rect, tics, right=False):
         offset = 0
         if self._label and self._show_label:
             pos = rect.x, rect.y + rect.height / 2
@@ -1535,7 +1645,10 @@ class YAxis(Axis):
                 w, h = label_object.get_calculated_dimensions(context, rect)
             self._offset_by_tic_label = int(w) + self._label_spacing
             offset += int(w)
-        rect = gtk.gdk.Rectangle(rect.x + offset, rect.y, rect.width - offset, rect.height)
+        if not right:
+            rect = gtk.gdk.Rectangle(rect.x + offset, rect.y, rect.width - offset, rect.height)
+        else:
+            rect = gtk.gdk.Rectangle(rect.x, rect.y, rect.width - offset, rect.height)
         return rect
 
 class Grid(ChartObject):

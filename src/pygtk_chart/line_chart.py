@@ -34,10 +34,11 @@ import math
 import pygtk_chart
 from pygtk_chart.basics import *
 from pygtk_chart.chart_object import ChartObject
+from pygtk_chart.color import TangoColors
 from pygtk_chart import chart
 from pygtk_chart import label
 
-from pygtk_chart import COLORS, COLOR_AUTO
+from pygtk_chart import COLOR_AUTO
 
 try:
     import numpy
@@ -822,7 +823,11 @@ class LineChart(chart.Chart):
                         "extend-yrange": (gobject.TYPE_PYOBJECT,
                                             "set how to extend the yrange",
                                             "Set how to extend the yrange.",
-                                            gobject.PARAM_READWRITE)}
+                                            gobject.PARAM_READWRITE),
+                        "color-set": (gobject.TYPE_PYOBJECT,
+                                        "set the color set",
+                                        "Set the color set for the chart.",
+                                        gobject.PARAM_READWRITE)}
     
     _xrange1 = RANGE_AUTO
     _yrange1 = RANGE_AUTO
@@ -837,6 +842,8 @@ class LineChart(chart.Chart):
     _graphs_xaxis2 = []
     _graphs_yaxis1 = []
     _graphs_yaxis2 = []
+    
+    _color_set = TangoColors()
     
     def __init__(self):
         super(LineChart, self).__init__()
@@ -866,6 +873,8 @@ class LineChart(chart.Chart):
             return self._extend_xrange
         elif property.name == "extend-yrange":
             return self._extend_yrange
+        elif property.name == "color-set":
+            return self._color_set
         else:
             return super(LineChart, self).do_get_property(property)
             
@@ -876,6 +885,8 @@ class LineChart(chart.Chart):
             self._extend_xrange = value
         elif property.name == "extend-yrange":
             self._extend_yrange = value
+        elif property.name == "color-set":
+            self._color_set = value
         else:
             super(LineChart, self).do_set_property(property, value)
         
@@ -1004,7 +1015,7 @@ class LineChart(chart.Chart):
         
         #draw key
         context.restore()
-        self.key.draw(context, rect, self._graphs)
+        self.key.draw(context, rect, self._graphs, self._color_set)
         
         label.finish_drawing()
         
@@ -1071,10 +1082,11 @@ class LineChart(chart.Chart):
         logscale2 = (self.xaxis2.get_property("logscale"),
                     self.yaxis2.get_property("logscale"))
         chart.init_sensitive_areas()
+        self._color_set.reset()
         for i, graph in enumerate(self._graphs):
             gc = graph.get_property("color")
             if gc == COLOR_AUTO:
-                gc = COLORS[i % len(COLORS)]
+                gc = self._color_set.get_color()
             
             logx = False
             logy = False
@@ -1141,6 +1153,28 @@ class LineChart(chart.Chart):
         self._graphs_xaxis2 = []
         self._graphs_yaxis1 = []
         self._graphs_yaxis2 = []
+        self.queue_draw()
+        
+    def get_color_set(self):
+        """
+        Returns the currently used color set.
+        
+        @return: pygtk_chart.color.ColorSet
+        """
+        return self.get_property("color-set")
+        
+    def set_color_set(self, color_set):
+        """
+        Set a new color set to use. Available color sets are:
+        
+         - pygtk_chart.color.TangoColors (default)
+         - pygtk_chart.color.SimpleColors
+         - pygtk_chart.color.GrayScaleColors
+        
+        @param color_set: the new color set
+        @type color_set: a pygtk_chart.color.ColorSet instance
+        """
+        self.set_property("color-set", color_set)
         self.queue_draw()
         
     def get_mouse_over_effect(self):
@@ -2023,8 +2057,9 @@ class LineChartKey(ChartObject):
         super(LineChartKey, self).__init__()
         self.set_visible(False)
         
-    def _do_draw(self, context, rect, graph_list):
+    def _do_draw(self, context, rect, graph_list, color_set):
         set_context_line_style(context, pygtk_chart.LINE_STYLE_SOLID)
+        color_set.reset()
         
         width = self._width * rect.width
         height = 0
@@ -2044,8 +2079,9 @@ class LineChartKey(ChartObject):
             #draw line
             context.move_to(cx, cy)
             gc = graph.get_property("color")
+            
             if gc == COLOR_AUTO:
-                gc = COLORS[i % len(COLORS)]
+                gc = color_set.get_color()
                 
             context.set_source_rgb(*color_gdk_to_cairo(gc))
             if graph.get_line_style() != pygtk_chart.LINE_STYLE_NONE:

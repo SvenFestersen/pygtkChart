@@ -1112,6 +1112,16 @@ class LineChart(chart.Chart):
             context.fill()
         
     def add_graph(self, graph, xaxis=1, yaxis=1):
+        """
+        Add a graph to the LineChart widget.
+        The parameters xaxis and yaxis specify which axes should be used
+        to scale and display the data (axis 1 or 2).
+        
+        @type graph: line_chart.Graph
+        @param graph: the graph to add
+        @type xaxis: int (1 or 2)
+        @type yaxis: int (1 or 2)
+        """
         self._graphs.append(graph)
         
         if xaxis == 1:

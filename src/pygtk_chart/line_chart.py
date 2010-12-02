@@ -1272,7 +1272,7 @@ class LineChart(chart.Chart):
         """
         self.set_property("extend-yrange", extend)
         self.queue_draw()
-
+        
 
 class Axis(ChartObject):
     
@@ -1319,7 +1319,7 @@ class Axis(ChartObject):
     _label_spacing = 3
     _show_tics = True
     _show_tic_labels = True
-    _tic_label_format = lambda self, x: "%.2g" % x
+    _tic_label_format = lambda self, x: "%.4g" % x
     _tics_size = 3
     _min_tic_spacing = 35 
     _offset_by_tic_label = 0

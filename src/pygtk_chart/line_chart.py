@@ -894,6 +894,7 @@ class LineChart(chart.Chart):
         data = chart.get_sensitive_areas(event.x, event.y)
         for graph, point in data:
             self.emit("point-clicked", graph, point)
+        super(LineChart, self)._cb_button_pressed(widget, event)
     
     def _cb_motion_notify(self, widget, event):
         if not self._mouse_over_effect: return

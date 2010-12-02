@@ -94,6 +94,8 @@ class Chart(gtk.DrawingArea):
     __gproperties__ = {"padding": (gobject.TYPE_INT, "padding",
                                     "The chart's padding.", 0, 100, 16,
                                     gobject.PARAM_READWRITE)}
+                                    
+    _popup = None
     
     def __init__(self):
         gtk.DrawingArea.__init__(self)
@@ -130,7 +132,10 @@ class Chart(gtk.DrawingArea):
         self.queue_draw()
         
     def _cb_button_pressed(self, widget, event):
-        pass
+        if event.button == 3:
+            if type(self._popup) == gtk.Menu:
+                self._popup.show_all()
+                self._popup.popup(None, None, None, event.button, event.time)
     
     def _cb_motion_notify(self, widget, event):
         pass
@@ -185,6 +190,15 @@ class Chart(gtk.DrawingArea):
         rect = gtk.gdk.Rectangle(0, 0, rect.width, rect.height) #transform rect to context coordinates
         context.set_line_width(1)
         rect = self.draw_basics(context, rect)
+        
+    def set_popup(self, menu):
+        """
+        Set the popup menu for the chart.
+        
+        @param menu: the menu
+        @type menu: get.Menu
+        """
+        self._popup = menu
         
     def export_svg(self, filename, size=None):
         """

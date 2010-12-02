@@ -1027,7 +1027,7 @@ class LineChart(chart.Chart):
                             calculated_yrange2)
         
         self._draw_peak_marker(context, rect, calculated_xrange1,
-                                calculated_yrange1)
+                                calculated_yrange1, logscale1)
         
         #draw key
         context.restore()
@@ -1122,12 +1122,15 @@ class LineChart(chart.Chart):
             graph.draw(context, rect, calculated_xrange, calculated_yrange, gc,
                         (logx, logy))
             
-    def _draw_peak_marker(self, context, rect, xrange, yrange):
+    def _draw_peak_marker(self, context, rect, xrange, yrange, logscale):
         if self._peak_marker != None:
             ppu_x = float(rect.width) / abs(xrange[0] - xrange[1])
             ppu_y = float(rect.height) / abs(yrange[0] - yrange[1])
             
             x, y = self._peak_marker
+            
+            if logscale[0]: x = math.log10(x)
+            if logscale[1]: y = math.log10(y)
             
             posx = rect.x + ppu_x * (x - xrange[0])
             posy = rect.y + rect.height - ppu_y * (y - yrange[0])

@@ -138,12 +138,14 @@ def graph_draw_point_pixbuf(context, x, y, pixbuf):
     context.fill()
     
 def graph_draw_points(graph, context, rect, data, xrange, yrange, ppu_x, ppu_y,
-                        point_style, color, point_size, highlighted):
+                        point_style, color, point_size, highlighted, logscale):
     context.set_source_rgb(*color_gdk_to_cairo(color))
     if point_style != pygtk_chart.POINT_STYLE_NONE:
         xdata, ydata = data
         for i in range(0, len(xdata)):
             x, y = xdata[i], ydata[i]
+            if logscale[0]: x = math.log10(x)
+            if logscale[1]: y = math.log10(y)
             if not xrange[0] <= x <= xrange[1]: continue
             posx = rect.x + ppu_x * (x - xrange[0])
             posy = rect.y + rect.height - ppu_y * (y - yrange[0])
@@ -191,7 +193,7 @@ def graph_new_constant(xmin, xmax, value):
     return g
         
 def graph_draw_fill_to(context, rect, data, xrange, yrange, ppu_x, ppu_y,
-                        fill_to, color, opacity):
+                        fill_to, color, opacity, logscale):
     fill_graph = None
     xmin, xmax = xrange
     if type(fill_to) == Graph:
@@ -199,24 +201,34 @@ def graph_draw_fill_to(context, rect, data, xrange, yrange, ppu_x, ppu_y,
         xmin = max(xrange[0], min(data[0]))
         xmax = min(xrange[1], max(data[0]))
     elif type(fill_to) in [int, float]:
-        xmin = max(xrange[0], min(data[0]))
-        xmax = min(xrange[1], max(data[0]))
+        if logscale[0]:
+            xmin = max(10 ** xrange[0], min(data[0]))
+            xmax = min(10 ** xrange[1], max(data[0]))
+        else:
+            xmin = max(xrange[0], min(data[0]))
+            xmax = min(xrange[1], max(data[0]))
         fill_graph = graph_new_constant(xmin, xmax, fill_to)
         
     if fill_graph != None:
         c = color_gdk_to_cairo(color)
         context.set_source_rgba(c[0], c[1], c[2], opacity)
         other_data = fill_graph.get_points()[:]
-        xmin = max(xmin, min(other_data[0]))
-        xmax = min(xmax, max(other_data[0]))
+        
+        oxdata, oydata = other_data
+        
+        xmin = max(xmin, min(oxdata))
+        xmax = min(xmax, max(oxdata))
         other_data[0].reverse()
         other_data[1].reverse()
         first_point = True
         
         xdata, ydata = data
+        
         for i in range(0, len(xdata)):
             x, y = xdata[i], ydata[i]
             if not xmin <= x <= xmax: continue
+            if logscale[0]: x = math.log10(x)
+            if logscale[1]: y = math.log10(y)
             posx = rect.x + ppu_x * (x - xrange[0])
             posy = rect.y + rect.height - ppu_y * (y - yrange[0])
             
@@ -226,8 +238,10 @@ def graph_draw_fill_to(context, rect, data, xrange, yrange, ppu_x, ppu_y,
             else:
                 context.line_to(posx, posy)
         for i in range(0, len(other_data[0])):
-            x, y = other_data[0][i], other_data[1][i]
+            x, y = oxdata[i], oydata[i]
             if not xmin <= x <= xmax: continue
+            if logscale[0]: x = math.log10(x)
+            if logscale[1]: y = math.log10(y)
             posx = rect.x + ppu_x * (x - xrange[0])
             posy = rect.y + rect.height - ppu_y * (y - yrange[0])
             context.line_to(posx, posy)
@@ -419,13 +433,14 @@ class Graph(ChartObject):
         ppu_y = float(rect.height) / abs(yrange[0] - yrange[1])
         
         graph_draw_fill_to(context, rect, self._data, xrange, yrange, ppu_x,
-                            ppu_y, self._fill_to, color, self._fill_opacity)
+                            ppu_y, self._fill_to, color, self._fill_opacity,
+                            logscale)
         graph_draw_lines(context, rect, self._data, xrange, yrange, ppu_x,
                             ppu_y, self._line_style, self._line_width, color,
                             logscale)                
         graph_draw_points(self, context, rect, self._data, xrange, yrange,
                             ppu_x, ppu_y, self._point_style, color,
-                            self._point_size, self._highlighted)    
+                            self._point_size, self._highlighted, logscale)    
         
     def get_points(self):
         return self._data

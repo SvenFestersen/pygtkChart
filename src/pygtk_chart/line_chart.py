@@ -851,12 +851,12 @@ class LineChart(chart.Chart):
     _mouse_over_effect = True
     _extend_xrange = (0, 0)
     _extend_yrange = (0, 0)
-    _peak_marker = None
     
     _graphs_xaxis1 = []
     _graphs_xaxis2 = []
     _graphs_yaxis1 = []
     _graphs_yaxis2 = []
+    _peak_markers = {}
     
     _color_set = TangoColors()
     
@@ -946,7 +946,7 @@ class LineChart(chart.Chart):
         extend_x = self._extend_xrange
         extend_y = self._extend_yrange
         
-        if self._peak_marker != None:
+        if len(self._peak_markers) > 0:
             #extend the y range 10% at the top to show peak marker
             extend_y = extend_y[0], extend_y[1] + 0.1
         
@@ -1026,8 +1026,9 @@ class LineChart(chart.Chart):
                             calculated_yrange1, calculated_xrange2,
                             calculated_yrange2)
         
-        self._draw_peak_marker(context, rect, calculated_xrange1,
-                                calculated_yrange1, logscale1)
+        self._draw_peak_markers(context, rect, calculated_xrange1,
+                                calculated_yrange1, calculated_xrange2,
+                                calculated_yrange2, logscale1, logscale2)
         
         #draw key
         context.restore()
@@ -1122,25 +1123,28 @@ class LineChart(chart.Chart):
             graph.draw(context, rect, calculated_xrange, calculated_yrange, gc,
                         (logx, logy))
             
-    def _draw_peak_marker(self, context, rect, xrange, yrange, logscale):
-        if self._peak_marker != None:
-            ppu_x = float(rect.width) / abs(xrange[0] - xrange[1])
-            ppu_y = float(rect.height) / abs(yrange[0] - yrange[1])
+    def _draw_peak_markers(self, context, rect, xrange1, yrange1, xrange2, yrange2, logscale1, logscale2):
+        for id, marker in self._peak_markers.iteritems():
+            n_xaxis = marker.get_property("xaxis")
+            n_yaxis = marker.get_property("yaxis")
             
-            x, y = self._peak_marker
+            logscale = [False, False]
             
-            if logscale[0]: x = math.log10(x)
-            if logscale[1]: y = math.log10(y)
+            if n_xaxis == 1:
+                xrange = xrange1
+                logscale[0] = logscale1[0]
+            else:
+                xrange = xrange2
+                logscale[0] = logscale2[0]
             
-            posx = rect.x + ppu_x * (x - xrange[0])
-            posy = rect.y + rect.height - ppu_y * (y - yrange[0])
-            
-            context.set_source_rgb(0, 0, 0)
-            context.move_to(posx, posy)
-            context.rel_line_to(5, -5)
-            context.rel_line_to(-10, 0)
-            context.close_path()
-            context.fill()
+            if n_yaxis == 1:
+                yrange = yrange1
+                logscale[1] = logscale1[1]
+            else:
+                yrange = yrange2
+                logscale[1] = logscale2[1]
+                
+            marker.draw(context, rect, xrange, yrange, logscale)
         
     def add_graph(self, graph, xaxis=1, yaxis=1):
         """
@@ -1166,12 +1170,28 @@ class LineChart(chart.Chart):
             
         self.queue_draw()
         
-    def clear(self):
+    def add_peak_marker(self, id, marker):
+        self._peak_markers[id] = marker
+        self.queue_draw()
+        
+    def remove_peak_marker(self, id):
+        del self._peak_markers[id]
+        self.queue_draw()
+        
+    def get_peak_marker(self, id):
+        return self._peak_markers[id]
+        
+    def get_peak_markers(self):
+        return self._peak_markers
+        
+    def clear(self, peak_markers=True):
         self._graphs = []
         self._graphs_xaxis1 = []
         self._graphs_xaxis2 = []
         self._graphs_yaxis1 = []
         self._graphs_yaxis2 = []
+        if peak_markers:
+            self._peak_markers = {}
         self.queue_draw()
         
     def get_color_set(self):
@@ -2286,3 +2306,82 @@ class LineChartKey(ChartObject):
         @type width: float in range [0.0, 1.0]
         """
         self.set_property("width", width)
+
+
+class PeakMarker(ChartObject):
+    
+    __gproperties__ = {"xaxis": (gobject.TYPE_INT, "id of the xaxis to use",
+                                    "Id of the xaxis to use.",
+                                    1, 2, 1, gobject.PARAM_READWRITE),
+                        "yaxis": (gobject.TYPE_INT, "id of the yaxis to use",
+                                    "Id of the yaxis to use.",
+                                    1, 2, 1, gobject.PARAM_READWRITE),
+                        "color": (gobject.TYPE_PYOBJECT, "color",
+                                    "Marker color.", gobject.PARAM_READWRITE),
+                        "position": (gobject.TYPE_PYOBJECT, "position",
+                                        "Position of the marker", 
+                                        gobject.PARAM_READWRITE)}
+    
+    _position = None
+    _text = ""
+    _xaxis = 1
+    _yaxis = 1
+    _color = gtk.gdk.Color()
+    
+    def __init__(self, pos, text="", xaxis=1, yaxis=1):
+        super(PeakMarker, self).__init__()
+        self._position = pos
+        self._text = text
+        self._xaxis = xaxis
+        self._yaxis = yaxis
+        
+    def do_get_property(self, property):
+        if property.name == "xaxis":
+            return self._xaxis
+        elif property.name == "yaxis":
+            return self._yaxis
+        elif property.name == "color":
+            return self._color
+        elif property.name == "position":
+            return self._position
+            
+    def do_set_property(self, property, value):
+        if property.name == "xaxis":
+            self._xaxis = value
+        elif property.name == "yaxis":
+            self._yaxis = value
+        elif property.name == "color":
+            self._color = value
+        elif property.name == "position":
+            self._position = value
+            
+    def _do_draw(self, context, rect, xrange, yrange, logscale):
+        if self._position == None: return
+        ppu_x = float(rect.width) / abs(xrange[0] - xrange[1])
+        ppu_y = float(rect.height) / abs(yrange[0] - yrange[1])
+        
+        x, y = self._position
+
+        if logscale[0]: x = math.log10(x)
+        if logscale[1]: y = math.log10(y)
+        
+        posx = rect.x + ppu_x * (x - xrange[0])
+        posy = rect.y + rect.height - ppu_y * (y - yrange[0]) - 2
+        
+        context.set_source_rgb(*color_gdk_to_cairo(self._color))
+        context.move_to(posx, posy)
+        context.rel_line_to(5, -5)
+        context.rel_line_to(-10, 0)
+        context.close_path()
+        context.fill()
+        context.set_source_rgb(0, 0, 0)
+        
+        if self._text != "":
+            l = label.Label((posx, posy - 10), self._text, anchor=label.ANCHOR_LEFT_CENTER)
+            l.set_rotation(90)
+            l.set_wrap(False)
+            l.draw(context, rect)
+        
+    def set_color(self, color):
+        self.set_property("color", color)
+        self.emit("appearance-changed")

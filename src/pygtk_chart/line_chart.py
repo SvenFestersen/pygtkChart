@@ -2309,6 +2309,10 @@ class LineChartKey(ChartObject):
 
 
 class PeakMarker(ChartObject):
+    """
+    This class displays a small rectangle (with an optional label) that
+    points to a given position.
+    """
     
     __gproperties__ = {"xaxis": (gobject.TYPE_INT, "id of the xaxis to use",
                                     "Id of the xaxis to use.",
@@ -2320,7 +2324,10 @@ class PeakMarker(ChartObject):
                                     "Marker color.", gobject.PARAM_READWRITE),
                         "position": (gobject.TYPE_PYOBJECT, "position",
                                         "Position of the marker", 
-                                        gobject.PARAM_READWRITE)}
+                                        gobject.PARAM_READWRITE),
+                        "text": (gobject.TYPE_STRING, "marker label",
+                                    "Marker label.", "",
+                                    gobject.PARAM_READWRITE)}
     
     _position = None
     _text = ""
@@ -2344,6 +2351,8 @@ class PeakMarker(ChartObject):
             return self._color
         elif property.name == "position":
             return self._position
+        elif property.name == "text":
+            return self._text
         else:
             super(PeakMarker, self).do_get_property(property)
             
@@ -2356,6 +2365,8 @@ class PeakMarker(ChartObject):
             self._color = value
         elif property.name == "position":
             self._position = value
+        elif property.name == "text":
+            self._text = value
         else:
             super(PeakMarker, self).do_set_property(property, value)
             
@@ -2385,7 +2396,79 @@ class PeakMarker(ChartObject):
             l.set_rotation(90)
             l.set_wrap(False)
             l.draw(context, rect)
+            
+    def get_axes(self):
+        """
+        Returns a pair of integers specifing the marker's axis affinties.
+        
+        @return: pair of int
+        """
+        return self.get_property("xaxis"), self.get_property("yaxis")
+        
+    def set_axes(self, xaxis, yaxis):
+        """
+        Set the markers axis affinities. xaxis and yaxis specify which
+        axes to use (1 or 2).
+        
+        @param xaxis: id of the x-axis
+        @type xaxis: int, 1 or 2
+        @param yaxis: id of the y-axis
+        @type yaxis: int, 1 or 2
+        """
+        self.set_property("xaxis", xaxis)
+        self.set_property("yaxis", yaxis)
+        self.emit("appearance-changed")
+    
+    def get_color(self):
+        """
+        Returns the current color of the marker.
+        
+        @return: gtk.gdk.Color
+        """
+        return self.get_property("color")
         
     def set_color(self, color):
+        """
+        The a new color for the marker.
+        
+        @param color: the new color
+        @type color: gtk.gdk.Color
+        """
         self.set_property("color", color)
+        self.emit("appearance-changed")
+        
+    def get_position(self):
+        """
+        Returns the current position of the marker.
+        
+        @return: a (x, y) pair or None
+        """
+        return self.get_property("position")
+        
+    def set_position(self, pos):
+        """
+        Set the position of the marker to pos = (x, y).
+        
+        @param pos: new position
+        @type pos: (x, y) pair.
+        """
+        self.set_property("position", pos)
+        self.emit("appearance-changed")
+        
+    def get_text(self):
+        """
+        Return the current label text for the marker.
+        
+        @return: string
+        """
+        return self.get_property("text")
+        
+    def set_text(self, txt):
+        """
+        Set a new text for the marker label.
+        
+        @param txt: the new text
+        @type txt: string
+        """
+        self.set_proeprty("text", txt)
         self.emit("appearance-changed")

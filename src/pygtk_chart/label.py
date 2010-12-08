@@ -364,7 +364,7 @@ class Label(ChartObject):
         context.move_to(x, y)
         context.rotate(-angle)
         context.set_source_rgb(*basics.color_gdk_to_cairo(self._color))
-        context.show_layout(layout)
+        #context.show_layout(layout)
         context.rotate(angle)
         context.stroke()
         context.translate(tx, ty)

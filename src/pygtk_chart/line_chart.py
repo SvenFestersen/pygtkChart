@@ -2344,6 +2344,8 @@ class PeakMarker(ChartObject):
             return self._color
         elif property.name == "position":
             return self._position
+        else:
+            super(PeakMarker, self).do_get_property(property)
             
     def do_set_property(self, property, value):
         if property.name == "xaxis":
@@ -2354,6 +2356,8 @@ class PeakMarker(ChartObject):
             self._color = value
         elif property.name == "position":
             self._position = value
+        else:
+            super(PeakMarker, self).do_set_property(property, value)
             
     def _do_draw(self, context, rect, xrange, yrange, logscale):
         if self._position == None: return

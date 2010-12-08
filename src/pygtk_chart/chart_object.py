@@ -25,6 +25,7 @@ Author: Sven Festersen (sven@sven-festersen.de)
 """
 import cairo
 import gobject
+import gtk
 
 class ChartObject(gobject.GObject):
     """
@@ -60,6 +61,9 @@ class ChartObject(gobject.GObject):
                                     "use antialiasing",
                                     "Set whether to use antialiasing when drawing the object.",
                                     True, gobject.PARAM_READWRITE)}
+                                    
+    _surface = None
+    _changed = True
     
     def __init__(self):
         gobject.GObject.__init__(self)
@@ -106,10 +110,35 @@ class ChartObject(gobject.GObject):
         """
         res = None
         if self._show:
-            if not self._antialias:
-                context.set_antialias(cairo.ANTIALIAS_NONE)
-            res = self._do_draw(context, rect, *args)
-            context.set_antialias(cairo.ANTIALIAS_DEFAULT)
+            if self._surface != None:
+                print rect.width, self._surface.get_width()
+                print rect.height, self._surface.get_height()
+                if rect.width != self._surface.get_width() - 2:
+                    self._changed = True
+                if rect.height != self._surface.get_height() - 2:
+                    self._changed = True
+            
+            if self._surface == None or self._changed:
+                print type(self)
+                self._surface = cairo.ImageSurface(cairo.FORMAT_ARGB32,
+                                                    rect.width + 2,
+                                                    rect.height + 2)
+                ctx = cairo.Context(self._surface)
+                
+                if not self._antialias:
+                    ctx.set_antialias(cairo.ANTIALIAS_NONE)
+                #res = self._do_draw(ctx, rect, *args)
+                nrect = gtk.gdk.Rectangle(0, 0, rect.width, rect.height)
+                res = self._do_draw(ctx, nrect, *args)
+                ctx.set_antialias(cairo.ANTIALIAS_DEFAULT)
+                
+                self._changed = False
+                
+            context.move_to(rect.x, rect.y)
+            context.set_source_surface(self._surface, rect.x, rect.y)
+            context.rectangle(rect.x - 1, rect.y - 1, rect.width + 2,
+                                rect.height + 2)
+            context.fill()
         return res
         
     def set_antialias(self, antialias):
@@ -150,6 +179,11 @@ class ChartObject(gobject.GObject):
         @return: boolean.
         """
         return self.get_property("visible")
+        
+    def emit(self, event_name, *args):
+        if event_name in ["appearance_changed", "appearance-changed"]:
+            self._changed = True
+        super(ChartObject, self).emit(event_name, *args)
         
 
 gobject.type_register(ChartObject)

@@ -107,9 +107,10 @@ class Chart(gtk.DrawingArea):
         self.title = Title()
         self.title.connect("appearance-changed", self._cb_appearance_changed)
         
-        self.add_events(gtk.gdk.BUTTON_PRESS_MASK|gtk.gdk.SCROLL_MASK|gtk.gdk.POINTER_MOTION_MASK)
+        self.add_events(gtk.gdk.BUTTON_PRESS_MASK|gtk.gdk.BUTTON_RELEASE_MASK|gtk.gdk.SCROLL_MASK|gtk.gdk.POINTER_MOTION_MASK)
         self.connect("expose_event", self._cb_expose_event)
         self.connect("button_press_event", self._cb_button_pressed)
+        self.connect("button_release_event", self._cb_button_released)
         self.connect("motion-notify-event", self._cb_motion_notify)
         
     def do_get_property(self, property):
@@ -136,6 +137,9 @@ class Chart(gtk.DrawingArea):
             if type(self._popup) == gtk.Menu:
                 self._popup.show_all()
                 self._popup.popup(None, None, None, event.button, event.time)
+                
+    def _cb_button_released(self, widget, event):
+        pass
     
     def _cb_motion_notify(self, widget, event):
         pass

@@ -37,6 +37,7 @@ from pygtk_chart.chart_object import ChartObject
 from pygtk_chart.color import TangoColors
 from pygtk_chart import chart
 from pygtk_chart import label
+from pygtk_chart import basics
 
 from pygtk_chart import COLOR_AUTO
 
@@ -823,7 +824,10 @@ class LineChart(chart.Chart):
                     "point-hovered": (gobject.SIGNAL_RUN_LAST,
                                         gobject.TYPE_NONE,
                                         (gobject.TYPE_PYOBJECT,
-                                        gobject.TYPE_PYOBJECT))}
+                                        gobject.TYPE_PYOBJECT)),
+                    "selection-changed": (gobject.SIGNAL_RUN_LAST,
+                                        gobject.TYPE_NONE,
+                                        (gobject.TYPE_PYOBJECT, ))}
                                         
     __gproperties__ = {"mouse-over-effect": (gobject.TYPE_BOOLEAN,
                                             "set whether to show datapoint \
@@ -842,7 +846,11 @@ class LineChart(chart.Chart):
                         "color-set": (gobject.TYPE_PYOBJECT,
                                         "set the color set",
                                         "Set the color set for the chart.",
-                                        gobject.PARAM_READWRITE)}
+                                        gobject.PARAM_READWRITE),
+                        "selection-mode": (gobject.TYPE_BOOLEAN,
+                                            "set whether to enable selection",
+                                            "Set whether to enable selection.",
+                                            False, gobject.PARAM_READWRITE)}
     
     _xrange1 = RANGE_AUTO
     _yrange1 = RANGE_AUTO
@@ -871,6 +879,11 @@ class LineChart(chart.Chart):
         self.key = LineChartKey()
         #private attributes
         self._graphs = []
+        self._selection_mode = False
+        self._selection_start = None
+        self._selection_end = None
+        self._selecting = False
+        self._data_rect = None
         
         #init some properties
         self.yaxis2.set_visible(True)
@@ -890,6 +903,8 @@ class LineChart(chart.Chart):
             return self._extend_yrange
         elif property.name == "color-set":
             return self._color_set
+        elif property.name == "selection-mode":
+            return self._selection_mode
         else:
             return super(LineChart, self).do_get_property(property)
             
@@ -902,28 +917,58 @@ class LineChart(chart.Chart):
             self._extend_yrange = value
         elif property.name == "color-set":
             self._color_set = value
+        elif property.name == "selection-mode":
+            self._selection_mode = value
         else:
             super(LineChart, self).do_set_property(property, value)
         
     def _cb_button_pressed(self, widget, event):
-        data = chart.get_sensitive_areas(event.x, event.y)
-        for graph, point in data:
-            self.emit("point-clicked", graph, point)
+        if self._selection_mode:
+            rx = self._data_rect.x
+            ry = self._data_rect.y
+            rw = float(self._data_rect.width)
+            rh = float(self._data_rect.height)
+            self._selection_start = ((event.x - rx) / rw,
+                                        (event.y - ry) / rh)
+            self._selecting = True
+        else:
+            data = chart.get_sensitive_areas(event.x, event.y)
+            for graph, point in data:
+                self.emit("point-clicked", graph, point)
         super(LineChart, self)._cb_button_pressed(widget, event)
+        
+    def _cb_button_released(self, widget, event):
+        if self._selection_mode:
+            self._selecting = False
+            data = (self._selection_start[0], self._selection_start[1],
+                    self._selection_end[0], self._selection_end[1])
+            self.emit("selection-changed", data)
+        super(LineChart, self)._cb_button_released(widget, event)
     
     def _cb_motion_notify(self, widget, event):
-        if not self._mouse_over_effect: return
-        data = chart.get_sensitive_areas(event.x, event.y)
-        change = False
-        for graph in self._graphs:
-            if graph.get_highlighted() != []:
-                change = True
-            graph.set_highlighted([])
-        for graph, point in data:
-            graph.add_highlighted(point)
-            self.emit("point-hovered", graph, point)
-        if data != [] or change:
-            self.queue_draw()
+        if self._selection_mode:
+            if self._selection_start != None:
+                if self._selecting:
+                    rx = self._data_rect.x
+                    ry = self._data_rect.y
+                    rw = float(self._data_rect.width)
+                    rh = float(self._data_rect.height)
+                    self._selection_end = ((event.x - rx) / rw,
+                                            (event.y - ry) / rh)
+                    self.queue_draw()
+        else:
+            if not self._mouse_over_effect: return
+            data = chart.get_sensitive_areas(event.x, event.y)
+            change = False
+            for graph in self._graphs:
+                if graph.get_highlighted() != []:
+                    change = True
+                graph.set_highlighted([])
+            for graph, point in data:
+                graph.add_highlighted(point)
+                self.emit("point-hovered", graph, point)
+            if data != [] or change:
+                self.queue_draw()
         
     def draw(self, context):
         """
@@ -1034,7 +1079,10 @@ class LineChart(chart.Chart):
         context.restore()
         self.key.draw(context, rect, self._graphs, self._color_set)
         
+        self._draw_selection(context, rect)
+        
         label.finish_drawing()
+        self._data_rect = rect
         
     def _draw_basics(self, context, rect):
         """
@@ -1145,6 +1193,32 @@ class LineChart(chart.Chart):
                 logscale[1] = logscale2[1]
                 
             marker.draw(context, rect, xrange, yrange, logscale)
+            
+    def _draw_selection(self, context, rect):
+        sc = gtk.Label("").get_style().bg[gtk.STATE_SELECTED]
+        c = basics.color_gdk_to_cairo(sc)
+        ca = (c[0], c[1], c[2], 0.3)
+        if self._selection_start != None and self._selection_end != None:
+            x = min(max(0, self._selection_start[0]), 1)
+            y = min(max(0, self._selection_start[1]), 1)
+            self._selection_start = (x, y)
+            
+            x = min(max(0, self._selection_end[0]), 1)
+            y = min(max(0, self._selection_end[1]), 1)
+            self._selection_end = (x, y)
+            
+            context.set_source_rgba(*ca)
+            px, py = self._selection_start
+            pw = self._selection_end[0] - px
+            ph = self._selection_end[1] - py
+            x = rect.x + rect.width * px
+            y = rect.y + rect.height * py
+            w = rect.width * pw
+            h = rect.height * ph
+            context.rectangle(x, y, w, h)
+            context.fill_preserve()
+            context.set_source_rgb(*c)
+            context.stroke()
         
     def add_graph(self, graph, xaxis=1, yaxis=1):
         """
@@ -1292,6 +1366,26 @@ class LineChart(chart.Chart):
         """
         self.set_property("extend-yrange", extend)
         self.queue_draw()
+        
+    def get_selection_mode(self):
+        """
+        Returns True if selection mode is enabled.
+        
+        @return: boolean
+        """
+        return self.get_property("selection_mode")
+        
+    def set_selection_mode(self, enable):
+        """
+        Set whether selection mode should be enabled. If enabled, the
+        user can select a rectangle in the chart.
+        The 'selection-changed' signal is emitted if selection is
+        changed.
+        
+        @param enable: set whether to enable selection mode
+        @type enable: boolean
+        """
+        self.set_property("selection_mode", enable)
         
 
 class Axis(ChartObject):

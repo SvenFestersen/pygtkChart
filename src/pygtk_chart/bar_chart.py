@@ -479,6 +479,8 @@ class BarChart(chart.Chart):
      - mode (the mode of the bar chart, type: one of MODE_VERTICAL,
       MODE_HORIZONTAL)
      - bar-padding (the sace between bars in px, type: int in [0, 100]).
+     - maximum-value (set the maximum value to which the bars are
+       scaled, type: int, float or None)
       
     Signals
     =======
@@ -506,7 +508,11 @@ class BarChart(chart.Chart):
                                         True, gobject.PARAM_READWRITE),
                         "enable-mouseover": (gobject.TYPE_BOOLEAN, "enable mouseover",
                                         "Set whether to enable mouseover effect.",
-                                        True, gobject.PARAM_READWRITE)}
+                                        True, gobject.PARAM_READWRITE),
+                        "maximum-value": (gobject.TYPE_PYOBJECT, 
+                                            "maximum value",
+                                            "set the maximum value",
+                                            gobject.PARAM_READWRITE)}
     
     def __init__(self):
         super(BarChart, self).__init__()
@@ -517,6 +523,7 @@ class BarChart(chart.Chart):
         self._mode = MODE_VERTICAL
         self._draw_labels = True
         self._mouseover = True
+        self._maximum_value = None
         #public attributes:
         self.grid = Grid()
         #connect callbacks:
@@ -533,6 +540,8 @@ class BarChart(chart.Chart):
             return self._draw_labels
         elif property.name == "enable-mouseover":
             return self._mouseover
+        elif property.name == "maximum-value":
+            return self._maximum_value
         else:
             raise AttributeError, "Property %s does not exist." % property.name
 
@@ -547,6 +556,8 @@ class BarChart(chart.Chart):
             self._draw_labels = value
         elif property.name == "enable-mouseover":
             self._mouseover = value
+        elif property.name == "maximum-value":
+            self._maximum_value = value
         else:
             raise AttributeError, "Property %s does not exist." % property.name
     
@@ -567,7 +578,10 @@ class BarChart(chart.Chart):
         context.set_line_width(1)
                                     
         rect = self.draw_basics(context, rect)
-        maximum_value = max(bar.get_value() for bar in self._bars)
+        if type(self._maximum_value) in [int, float]:
+            maximum_value = self._maximum_value
+        else:
+            maximum_value = max(bar.get_value() for bar in self._bars)
         #find out the size of the value labels
         value_label_size = 0
         if self._draw_labels:
@@ -671,6 +685,26 @@ class BarChart(chart.Chart):
         @return: int in [0, 100].
         """
         return self.get_property("bar-padding")
+        
+    def set_maximum_value(self, value):
+        """
+        Set the value to which the bars are scaled. Set value None to
+        use autoscale (default).
+        
+        @param value: the maximum value
+        @type value: int, float or None.
+        """
+        self.set_property("maximum-value", value)
+        self.queue_draw()
+        
+    def get_maximum_value(self):
+        """
+        Returns the current maximum value to whcih bars are scaled.
+        See set_maximum_value() for details.
+        
+        @return: int, float or None
+        """
+        return self.get_property("maximum-value")
         
     def set_mode(self, mode):
         """

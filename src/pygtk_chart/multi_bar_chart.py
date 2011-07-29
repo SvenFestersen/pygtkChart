@@ -97,8 +97,8 @@ class Bar(bar_chart.Bar):
             self._label_object.set_fixed(True)
             self._label_object.set_max_width(3 * bar_width)
             self._label_object.set_text(self._label)
-            self._label_object.set_position((bar_x + bar_width / 2 + 5, bar_y + bar_height + 8))
-            self._label_object.set_anchor(label.ANCHOR_TOP_RIGHT)
+            self._label_object.set_position((bar_x + bar_width / 2, bar_y + bar_height + 5))
+            self._label_object.set_anchor(label.ANCHOR_RIGHT_CENTER)
             self._label_object.draw(context, rect)
             context.fill()
         
@@ -462,7 +462,7 @@ class MultiBarChart(bar_chart.BarChart):
         self._groups = []
         #gobject properties:
         self._group_padding = 16
-        self._label_rotation = 300
+        self._label_rotation = 60
         self._rotate_group_label_in_horizontal_mode = False
         
     #gobject set_* and get_* methods

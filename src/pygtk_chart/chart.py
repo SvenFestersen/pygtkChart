@@ -94,6 +94,8 @@ class Chart(gtk.DrawingArea):
     __gproperties__ = {"padding": (gobject.TYPE_INT, "padding",
                                     "The chart's padding.", 0, 100, 16,
                                     gobject.PARAM_READWRITE)}
+                                    
+    _popup = None
     
     def __init__(self):
         gtk.DrawingArea.__init__(self)
@@ -105,9 +107,10 @@ class Chart(gtk.DrawingArea):
         self.title = Title()
         self.title.connect("appearance-changed", self._cb_appearance_changed)
         
-        self.add_events(gtk.gdk.BUTTON_PRESS_MASK|gtk.gdk.SCROLL_MASK|gtk.gdk.POINTER_MOTION_MASK)
+        self.add_events(gtk.gdk.BUTTON_PRESS_MASK|gtk.gdk.BUTTON_RELEASE_MASK|gtk.gdk.SCROLL_MASK|gtk.gdk.POINTER_MOTION_MASK)
         self.connect("expose_event", self._cb_expose_event)
         self.connect("button_press_event", self._cb_button_pressed)
+        self.connect("button_release_event", self._cb_button_released)
         self.connect("motion-notify-event", self._cb_motion_notify)
         
     def do_get_property(self, property):
@@ -130,6 +133,12 @@ class Chart(gtk.DrawingArea):
         self.queue_draw()
         
     def _cb_button_pressed(self, widget, event):
+        if event.button == 3:
+            if type(self._popup) == gtk.Menu:
+                self._popup.show_all()
+                self._popup.popup(None, None, None, event.button, event.time)
+                
+    def _cb_button_released(self, widget, event):
         pass
     
     def _cb_motion_notify(self, widget, event):
@@ -185,6 +194,15 @@ class Chart(gtk.DrawingArea):
         rect = gtk.gdk.Rectangle(0, 0, rect.width, rect.height) #transform rect to context coordinates
         context.set_line_width(1)
         rect = self.draw_basics(context, rect)
+        
+    def set_popup(self, menu):
+        """
+        Set the popup menu for the chart.
+        
+        @param menu: the menu
+        @type menu: get.Menu
+        """
+        self._popup = menu
         
     def export_svg(self, filename, size=None):
         """

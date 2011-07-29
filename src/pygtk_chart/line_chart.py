@@ -1,19 +1,20 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 #
-#       lineplot.py
-#
-#       Copyright 2008 Sven Festersen <sven@sven-festersen.de>
-#
+#       unbenannt.py
+#       
+#       Copyright 2009 Sven Festersen <sven@sven-laptop>
+#       
 #       This program is free software; you can redistribute it and/or modify
 #       it under the terms of the GNU General Public License as published by
 #       the Free Software Foundation; either version 2 of the License, or
 #       (at your option) any later version.
-#
+#       
 #       This program is distributed in the hope that it will be useful,
 #       but WITHOUT ANY WARRANTY; without even the implied warranty of
 #       MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 #       GNU General Public License for more details.
-#
+#       
 #       You should have received a copy of the GNU General Public License
 #       along with this program; if not, write to the Free Software
 #       Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
@@ -24,37 +25,70 @@ Contains the LineChart widget.
 Author: Sven Festersen (sven@sven-festersen.de)
 """
 __docformat__ = "epytext"
-import gobject
 import cairo
 import gtk
-import math
+import gobject
 import os
+import math
 
 import pygtk_chart
 from pygtk_chart.basics import *
 from pygtk_chart.chart_object import ChartObject
+from pygtk_chart.color import TangoColors
 from pygtk_chart import chart
 from pygtk_chart import label
-from pygtk_chart import COLORS, COLOR_AUTO
+from pygtk_chart import basics
 
-RANGE_AUTO = 0
-GRAPH_PADDING = 1 / 15.0 #a relative padding
-GRAPH_POINTS = 1
-GRAPH_LINES = 2
-GRAPH_BOTH = 3
-COLOR_AUTO = 4
-POSITION_AUTO = 5
-POSITION_LEFT = 6
-POSITION_RIGHT = 7
-POSITION_BOTTOM = 6
-POSITION_TOP = 7
-POSITION_TOP_RIGHT = 8
-POSITION_BOTTOM_RIGHT = 9
-POSITION_BOTTOM_LEFT = 10
-POSITION_TOP_LEFT = 11
+from pygtk_chart import COLOR_AUTO
 
+try:
+    import numpy
+except:
+    pass
+
+
+RANGE_AUTO = "range_auto"
+KEY_POSITION_TOP_RIGHT = 0
+KEY_POSITION_TOP_LEFT = 1
+KEY_POSITION_BOTTOM_LEFT = 2
+KEY_POSITION_BOTTOM_RIGHT = 3
+
+def safe_concatenation(a, b):
+    """
+    Concatenates lists or numpy arrays.
+    """
+    if type(a) == list and type(b) == list:
+        return a + b
+    elif type(a) == list and type(b) == numpy.ndarray:
+        return numpy.concatenate((numpy.array(a), b))
+    elif type(a) == numpy.ndarray and type(b) == list:
+        return numpy.concatenate((a, numpy.array(b)))
+    elif type(a) == numpy.ndarray and type(b) == numpy.ndarray:
+        return numpy.concatenate((a, b))
+    
+def graph_make_ranges(data):
+    """
+    Calculates the xrange and the yrange from data.
+    """
+    xdata, ydata = data
+    if data == []:
+        return None, None
+    xrange = [min(xdata), max(xdata)]
+    yrange = [min(ydata), max(ydata)]
         
-def draw_point(context, x, y, radius, style):
+    if xrange[0] == xrange[1]:
+        #if there is only one point, extend the xrange
+        xrange[0] = xrange[0] - 0.1
+        xrange[1] = xrange[1] + 0.1
+        
+    if yrange[0] == yrange[1]:
+        #if there is only one point, extend the yrange
+        yrange[0] = yrange[0] - 0.1
+        yrange[1] = yrange[1] + 0.1
+        
+    return tuple(xrange), tuple(yrange)
+
+def graph_draw_point(context, x, y, radius, style):
     a = radius / 1.414 #1.414=sqrt(2)
     if style == pygtk_chart.POINT_STYLE_CIRCLE:
         context.arc(x, y, radius, 0, 2 * math.pi)
@@ -95,7 +129,7 @@ def draw_point(context, x, y, radius, style):
         context.rel_line_to(a, -a)
         context.fill()
         
-def draw_point_pixbuf(context, x, y, pixbuf):
+def graph_draw_point_pixbuf(context, x, y, pixbuf):
     w = pixbuf.get_width()
     h = pixbuf.get_height()
     ax = x - w / 2
@@ -104,2033 +138,2431 @@ def draw_point_pixbuf(context, x, y, pixbuf):
     context.rectangle(ax, ay, w, h)
     context.fill()
     
-def draw_errors(context, rect, range_calc, x, y, errors, draw_x, draw_y, xaxis, yaxis, size):
-    if (x, y) in errors:
-        xerror, yerror = errors[(x, y)]
-        if draw_x and xerror > 0:
-            #rect, x, y, xaxis, yaxis
-            left = range_calc.get_absolute_point(rect, x - xerror, y, xaxis, yaxis)
-            right = range_calc.get_absolute_point(rect, x + xerror, y, xaxis, yaxis)
-            context.move_to(left[0], left[1])
-            context.line_to(right[0], right[1])
-            context.stroke()
-            context.move_to(left[0], left[1] - size)
-            context.rel_line_to(0, 2 * size)
-            context.stroke()
-            context.move_to(right[0], right[1] - size)
-            context.rel_line_to(0, 2 * size)
-            context.stroke()
-        if draw_y and yerror > 0:
-            top = range_calc.get_absolute_point(rect, x, y - yerror, xaxis, yaxis)
-            bottom = range_calc.get_absolute_point(rect, x, y + yerror, xaxis, yaxis)
-            context.move_to(top[0], top[1])
-            context.line_to(bottom[0], bottom[1])
-            context.stroke()
-            context.move_to(top[0] - size, top[1])
-            context.rel_line_to(2 * size, 0)
-            context.stroke()
-            context.move_to(bottom[0] - size, bottom[1])
-            context.rel_line_to(2 * size, 0)
-            context.stroke()
-    
-def separate_data_and_errors(old_data):
-    data = []
-    errors = {}
-    for d in old_data:
-        if len(d) == 2:
-            data.append(d)
-        elif len(d) == 4:
-            data.append((d[0], d[1]))
-            errors[(d[0], d[1])] = (d[2], d[3])
-    return data, errors
-
-
-class RangeCalculator:
-    """
-    This helper class calculates ranges. It is used by the LineChart
-    widget internally, there is no need to create an instance yourself.
-    """
-    def __init__(self):
-        self._data_xrange = None
-        self._data_yrange = None
-        self._xrange = RANGE_AUTO
-        self._yrange = RANGE_AUTO
-        self._cached_xtics = []
-        self._cached_ytics = []
-
-    def add_graph(self, graph):
-        if self._data_xrange == None:
-            self._data_yrange = graph.get_y_range()
-            self._data_xrange = graph.get_x_range()
-        else:
-            yrange = graph.get_y_range()
-            xrange = graph.get_x_range()
-
-            if xrange and yrange:
-                xmin = min(xrange[0], self._data_xrange[0])
-                xmax = max(xrange[1], self._data_xrange[1])
-                ymin = min(yrange[0], self._data_yrange[0])
-                ymax = max(yrange[1], self._data_yrange[1])
-
-                self._data_xrange = (xmin, xmax)
-                self._data_yrange = (ymin, ymax)
-
-    def get_ranges(self, xaxis, yaxis):
-        xrange = self._xrange
-        if xrange == RANGE_AUTO:
-            xrange = self._data_xrange
-            if xrange[0] == xrange[1]:
-                xrange = (xrange[0], xrange[0] + 0.1)
-
-        yrange = self._yrange
-        if yrange == RANGE_AUTO:
-            yrange = self._data_yrange
-            if yrange[0] == yrange[1]:
-                yrange = (yrange[0], yrange[0] + 0.1)
-                
-                
-        if xaxis.get_logarithmic():
-            xrange = math.log10(xrange[0]), math.log10(xrange[1])
-        if yaxis.get_logarithmic():
-            yrange = math.log10(yrange[0]), math.log10(yrange[1])
-
-        return (xrange, yrange)
-
-    def set_xrange(self, xrange):
-        self._xrange = xrange
-
-    def set_yrange(self, yrange):
-        self._yrange = yrange
-
-    def get_absolute_zero(self, rect, xaxis, yaxis):
-        xrange, yrange = self.get_ranges(xaxis, yaxis)
-
-        xfactor = float(rect.width * (1 - 2 * GRAPH_PADDING)) / (xrange[1] - xrange[0])
-        yfactor = float(rect.height * (1 - 2 * GRAPH_PADDING)) / (yrange[1] - yrange[0])
-        zx = (rect.width * GRAPH_PADDING) - xrange[0] * xfactor
-        zy = rect.height - ((rect.height * GRAPH_PADDING) - yrange[0] * yfactor)
-
-        return (zx,zy)
-
-    def get_absolute_point(self, rect, x, y, xaxis, yaxis):
-        (zx, zy) = self.get_absolute_zero(rect, xaxis, yaxis)
-        xrange, yrange = self.get_ranges(xaxis, yaxis)
-
-        xfactor = float(rect.width * (1 - 2 * GRAPH_PADDING)) / (xrange[1] - xrange[0])
-        yfactor = float(rect.height * (1 - 2 * GRAPH_PADDING)) / (yrange[1] - yrange[0])
-
-        ax = zx + x * xfactor
-        ay = zy - y * yfactor
-        return (ax, ay)
-
-    def prepare_tics(self, rect, xaxis, yaxis):
-        self._cached_xtics = self._get_xtics(rect, xaxis, yaxis)
-        self._cached_ytics = self._get_ytics(rect, xaxis, yaxis)
-
-    def get_xtics(self, rect):
-        return self._cached_xtics
-
-    def get_ytics(self, rect):
-        return self._cached_ytics
-
-    def _get_xtics(self, rect, xaxis, yaxis):
-        tics = []
-        (zx, zy) = self.get_absolute_zero(rect, xaxis, yaxis)
-        (xrange, yrange) = self.get_ranges(xaxis, yaxis)
-        delta = xrange[1] - xrange[0]
-        exp = int(math.log10(delta)) - 1
-
-        first_n = int(xrange[0] / (10 ** exp))
-        last_n = int(xrange[1] / (10 ** exp))
-        n = last_n - first_n
-        N = rect.width / 50.0
-        divide_by = int(n / N)
-        if divide_by == 0: divide_by = 1
-
-        left = rect.width * GRAPH_PADDING
-        right = rect.width * (1 - GRAPH_PADDING)
-
-        for i in range(first_n, last_n + 1):
-            num = i * 10 ** exp
-            (x, y) = self.get_absolute_point(rect, num, 0, xaxis, yaxis)
-            if i % divide_by == 0 and is_in_range(x, (left, right)):
-                tics.append(((x, y), num))
-
-        return tics
-
-    def _get_ytics(self, rect, xaxis, yaxis):
-        tics = []
-        (zx, zy) = self.get_absolute_zero(rect, xaxis, yaxis)
-        (xrange, yrange) = self.get_ranges(xaxis, yaxis)
-        delta = yrange[1] - yrange[0]
-        exp = int(math.log10(delta)) - 1
-
-        first_n = int(yrange[0] / (10 ** exp))
-        last_n = int(yrange[1] / (10 ** exp))
-        n = last_n - first_n
-        N = rect.height / 50.0
-        divide_by = int(n / N)
-        if divide_by == 0: divide_by = 1
-
-        top = rect.height * GRAPH_PADDING
-        bottom = rect.height * (1 - GRAPH_PADDING)
-
-        for i in range(first_n, last_n + 1):
-            num = i * 10 ** exp
-            (x, y) = self.get_absolute_point(rect, 0, num, xaxis, yaxis)
-            if i % divide_by == 0 and is_in_range(y, (top, bottom)):
-                tics.append(((x, y), num))
-
-        return tics
-
-
-class LineChart(chart.Chart):
-    """
-    A widget that shows a line chart. The following attributes can be
-    accessed:
-     - LineChart.background (inherited from chart.Chart)
-     - LineChart.title (inherited from chart.Chart)
-     - LineChart.graphs (a dict that holds the graphs identified by
-       their name)
-     - LineChart.grid
-     - LineChart.xaxis
-     - LineChart.yaxis
-     
-    Properties
-    ==========
-    LineChart inherits properties from chart.Chart.
-    
-    Signals
-    =======
-    The LineChart class inherits signals from chart.Chart.
-    Additional chart:
-     - datapoint-clicked (emitted if a datapoint is clicked)
-     - datapoint-hovered (emitted if a datapoint is hovered with the
-       mouse pointer)
-    Callback signature for both signals:
-    def callback(linechart, graph, (x, y))
-    """
-    
-    __gsignals__ = {"datapoint-clicked": (gobject.SIGNAL_RUN_LAST,
-                                            gobject.TYPE_NONE,
-                                            (gobject.TYPE_PYOBJECT,
-                                            gobject.TYPE_PYOBJECT)),
-                    "datapoint-hovered": (gobject.SIGNAL_RUN_LAST,
-                                            gobject.TYPE_NONE,
-                                            (gobject.TYPE_PYOBJECT,
-                                            gobject.TYPE_PYOBJECT))}
-    
-    def __init__(self):
-        chart.Chart.__init__(self)
-        self.graphs = {}
-        self._range_calc = RangeCalculator()
-        self.xaxis = XAxis(self._range_calc)
-        self.yaxis = YAxis(self._range_calc)
-        self.grid = Grid(self._range_calc)
-        self.legend = Legend()
-        
-        self._highlighted_points = []
-
-        self.xaxis.connect("appearance_changed", self._cb_appearance_changed)
-        self.yaxis.connect("appearance_changed", self._cb_appearance_changed)
-        self.grid.connect("appearance_changed", self._cb_appearance_changed)
-        self.legend.connect("appearance_changed", self._cb_appearance_changed)
-        
-    def __iter__(self):
-        for name, graph in self.graphs.iteritems():
-            yield graph
+def graph_draw_points(graph, context, rect, data, xrange, yrange, ppu_x, ppu_y,
+                        point_style, color, point_size, highlighted, logscale):
+    context.set_source_rgb(*color_gdk_to_cairo(color))
+    if point_style != pygtk_chart.POINT_STYLE_NONE:
+        xdata, ydata = data
+        for i in range(0, len(xdata)):
+            x, y = xdata[i], ydata[i]
+            if logscale[0]: x = math.log10(x)
+            if logscale[1]: y = math.log10(y)
+            if not xrange[0] <= x <= xrange[1]: continue
+            posx = rect.x + ppu_x * (x - xrange[0])
+            posy = rect.y + rect.height - ppu_y * (y - yrange[0])
             
-    def _cb_button_pressed(self, widget, event):
-        points = chart.get_sensitive_areas(event.x, event.y)
-        for x, y, graph in points:
-            self.emit("datapoint-clicked", graph, (x, y))
-    
-    def _cb_motion_notify(self, widget, event):
-        self._highlighted_points = chart.get_sensitive_areas(event.x, event.y)
-        for x, y, graph in self._highlighted_points:
-            self.emit("datapoint-hovered", graph, (x, y))
-        self.queue_draw()
-
-    def _do_draw_graphs(self, context, rect):
-        """
-        Draw all the graphs.
-
-        @type context: cairo.Context
-        @param context: The context to draw on.
-        @type rect: gtk.gdk.Rectangle
-        @param rect: A rectangle representing the charts area.
-        """
-        for (name, graph) in self.graphs.iteritems():
-            graph.draw(context, rect, self.xaxis, self.yaxis, self._highlighted_points)
-        self._highlighted_points = []
-
-    def _do_draw_axes(self, context, rect):
-        """
-        Draw x and y axis.
-
-        @type context: cairo.Context
-        @param context: The context to draw on.
-        @type rect: gtk.gdk.Rectangle
-        @param rect: A rectangle representing the charts area.
-        """
-        self.xaxis.draw(context, rect, self.yaxis)
-        self.yaxis.draw(context, rect, self.xaxis)
-
-    def draw(self, context):
-        """
-        Draw the widget. This method is called automatically. Don't call it
-        yourself. If you want to force a redrawing of the widget, call
-        the queue_draw() method.
-
-        @type context: cairo.Context
-        @param context: The context to draw on.
-        """
-        label.begin_drawing()
-        chart.init_sensitive_areas()
-        rect = self.get_allocation()
-        self._range_calc.prepare_tics(rect, self.xaxis, self.yaxis)
-        #initial context settings: line width & font
-        context.set_line_width(1)
-        font = gtk.Label().style.font_desc.get_family()
-        context.select_font_face(font,cairo.FONT_SLANT_NORMAL, \
-                                    cairo.FONT_WEIGHT_NORMAL)
-
-        self.draw_basics(context, rect)
-        data_available = False
-        for (name, graph) in self.graphs.iteritems():
-            if graph.has_something_to_draw():
-                data_available = True
-                break
-
-        if self.graphs and data_available:
-            self.grid.draw(context, rect, self.xaxis, self.yaxis)
-            self._do_draw_axes(context, rect)
-            self._do_draw_graphs(context, rect)
-        label.finish_drawing()
-        
-        self.legend.draw(context, rect, self.graphs)
-
-    def add_graph(self, graph):
-        """
-        Add a graph object to the plot.
-
-        @type graph: line_chart.Graph
-        @param graph: The graph to add.
-        """
-        if graph.get_color() == COLOR_AUTO:
-            graph.set_color(COLORS[len(self.graphs) % len(COLORS)])
-        graph.set_range_calc(self._range_calc)
-        self.graphs[graph.get_name()] = graph
-        self._range_calc.add_graph(graph)
-
-        graph.connect("appearance-changed", self._cb_appearance_changed)
-
-    def remove_graph(self, name):
-        """
-        Remove a graph from the plot.
-
-        @type name: string
-        @param name: The name of the graph to remove.
-        """
-        del self.graphs[name]
-        self.queue_draw()
-
-    def set_xrange(self, xrange):
-        """
-        Set the visible xrange. xrange has to be a pair: (xmin, xmax) or
-        RANGE_AUTO. If you set it to RANGE_AUTO, the visible range will
-        be calculated.
-
-        @type xrange: pair of numbers
-        @param xrange: The new xrange.
-        """
-        self._range_calc.set_xrange(xrange)
-        self.queue_draw()
-        
-    def get_xrange(self):
-        return self._range_calc.get_ranges(self.xaxis, self.yaxis)[0]
-
-    def set_yrange(self, yrange):
-        """
-        Set the visible yrange. yrange has to be a pair: (ymin, ymax) or
-        RANGE_AUTO. If you set it to RANGE_AUTO, the visible range will
-        be calculated.
-
-        @type yrange: pair of numbers
-        @param yrange: The new yrange.
-        """
-        self._range_calc.set_yrange(yrange)
-        self.queue_draw()
-        
-    def get_yrange(self):
-        return self._range_calc.get_ranges(self.xaxis, self.yaxis)[1]
-
-
-class Axis(ChartObject):
-    """
-    This class represents an axis on the line chart.
-    
-    Properties
-    ==========
-    The Axis class inherits properties from chart_object.ChartObject.
-    Additional properties:
-     - label (a label for the axis, type: string)
-     - show-label (sets whether the axis' label should be shown, 
-       type: boolean)
-     - position (position of the axis, type: an axis position constant)
-     - show-tics (sets whether tics should be shown at the axis,
-       type: boolean)
-     - show-tic-lables (sets whether labels should be shown at the tics,
-       type: boolean)
-     - tic-format-function (a function that is used to format the tic
-       labels, default: str)
-     - logarithmic (sets whether the axis should use a logarithmic
-       scale, type: boolean).
-       
-    Signals
-    =======
-    The Axis class inherits signals from chart_object.ChartObject.
-    """
-
-    __gproperties__ = {"label": (gobject.TYPE_STRING, "axis label",
-                                    "The label of the axis.", "",
-                                    gobject.PARAM_READWRITE),
-                        "show-label": (gobject.TYPE_BOOLEAN, "show label",
-                                    "Set whether to show the axis label.",
-                                    True, gobject.PARAM_READWRITE),
-                        "position": (gobject.TYPE_INT, "axis position",
-                                    "Position of the axis.", 5, 7, 5,
-                                    gobject.PARAM_READWRITE),
-                        "show-tics": (gobject.TYPE_BOOLEAN, "show tics",
-                                    "Set whether to draw tics.", True,
-                                    gobject.PARAM_READWRITE),
-                        "show-tic-labels": (gobject.TYPE_BOOLEAN,
-                                            "show tic labels",
-                                            "Set whether to draw tic labels",
-                                            True,
-                                            gobject.PARAM_READWRITE),
-                        "tic-format-function": (gobject.TYPE_PYOBJECT,
-                                            "tic format function",
-                                            "This function is used to label the tics.",
-                                            gobject.PARAM_READWRITE),
-                        "logarithmic": (gobject.TYPE_BOOLEAN,
-                                        "logarithmic scale",
-                                        "Set whether to use logarithmic scale.",
-                                        False, gobject.PARAM_READWRITE)}
-
-    def __init__(self, range_calc, label):
-        ChartObject.__init__(self)
-        self.set_property("antialias", False)
-
-        self._label = label
-        self._show_label = True
-        self._position = POSITION_AUTO
-        self._show_tics = True
-        self._show_tic_labels = True
-        self._tic_format_function = str
-        self._logarithmic = False
-
-        self._range_calc = range_calc
-
-    def do_get_property(self, property):
-        if property.name == "visible":
-            return self._show
-        elif property.name == "antialias":
-            return self._antialias
-        elif property.name == "label":
-            return self._label
-        elif property.name == "show-label":
-            return self._show_label
-        elif property.name == "position":
-            return self._position
-        elif property.name == "show-tics":
-            return self._show_tics
-        elif property.name == "show-tic-labels":
-            return self._show_tic_labels
-        elif property.name == "tic-format-function":
-            return self._tic_format_function
-        elif property.name == "logarithmic":
-            return self._logarithmic
-        else:
-            raise AttributeError, "Property %s does not exist." % property.name
-
-    def do_set_property(self, property, value):
-        if property.name == "visible":
-            self._show = value
-        elif property.name == "antialias":
-            self._antialias = value
-        elif property.name == "label":
-            self._label = value
-        elif property.name == "show-label":
-            self._show_label = value
-        elif property.name == "position":
-            self._position = value
-        elif property.name == "show-tics":
-            self._show_tics = value
-        elif property.name == "show-tic-labels":
-            self._show_tic_labels = value
-        elif property.name == "tic-format-function":
-            self._tic_format_function = value
-        elif property.name == "logarithmic":
-            self._logarithmic = value
-        else:
-            raise AttributeError, "Property %s does not exist." % property.name
-
-    def set_label(self, label):
-        """
-        Set the label of the axis.
-
-        @param label: new label
-        @type label: string.
-        """
-        self.set_property("label", label)
-        self.emit("appearance_changed")
-
-    def get_label(self):
-        """
-        Returns the current label of the axis.
-
-        @return: string.
-        """
-        return self.get_property("label")
-
-    def set_show_label(self, show):
-        """
-        Set whether to show the axis' label.
-
-        @type show: boolean.
-        """
-        self.set_property("show-label", show)
-        self.emit("appearance_changed")
-
-    def get_show_label(self):
-        """
-        Returns True if the axis' label is shown.
-
-        @return: boolean.
-        """
-        return self.get_property("show-label")
-
-    def set_position(self, pos):
-        """
-        Set the position of the axis. pos hast to be one these
-        constants: POSITION_AUTO, POSITION_BOTTOM, POSITION_LEFT,
-        POSITION_RIGHT, POSITION_TOP.
-        """
-        self.set_property("position", pos)
-        self.emit("appearance_changed")
-
-    def get_position(self):
-        """
-        Returns the position of the axis. (see set_position for
-        details).
-        """
-        return self.get_property("position")
-
-    def set_show_tics(self, show):
-        """
-        Set whether to draw tics at the axis.
-
-        @type show: boolean.
-        """
-        self.set_property("show-tics", show)
-        self.emit("appearance_changed")
-
-    def get_show_tics(self):
-        """
-        Returns True if tics are drawn.
-
-        @return: boolean.
-        """
-        return self.get_property("show-tics")
-
-    def set_show_tic_labels(self, show):
-        """
-        Set whether to draw tic labels. Labels are only drawn if
-        tics are drawn.
-
-        @type show: boolean.
-        """
-        self.set_property("show-tic-labels", show)
-        self.emit("appearance_changed")
-
-    def get_show_tic_labels(self):
-        """
-        Returns True if tic labels are shown.
-
-        @return: boolean.
-        """
-        return self.get_property("show-tic-labels")
-
-    def set_tic_format_function(self, func):
-        """
-        Use this to set the function that should be used to label
-        the tics. The function should take a number as the only
-        argument and return a string. Default: str
-
-        @type func: function.
-        """
-        self.set_property("tic-format-function", func)
-        self.emit("appearance_changed")
-
-    def get_tic_format_function(self):
-        """
-        Returns the function currently used for labeling the tics.
-        """
-        return self.get_property("tic-format-function")
-        
-    def set_logarithmic(self, log):
-        """
-        Set whether the axis should use logarithmic (base 10) scale.
-        
-        @type log: boolean.
-        """
-        self.set_property("logarithmic", log)
-        self.emit("appearance_changed")
-        
-    def get_logarithmic(self):
-        """
-        Returns True if the axis uses logarithmic scale.
-        
-        @return: boolean.
-        """
-        return self.get_property("logarithmic")
-
-
-class XAxis(Axis):
-    """
-    This class represents the xaxis. It is used by the LineChart
-    widget internally, there is no need to create an instance yourself.
-    
-    Properties
-    ==========
-    The XAxis class inherits properties from Axis.
-    
-    Signals
-    =======
-    The XAxis class inherits signals from Axis.
-    """
-    def __init__(self, range_calc):
-        Axis.__init__(self, range_calc, "x")
-
-    def draw(self, context, rect, yaxis):
-        """
-        This method is called by the parent Plot instance. It
-        calls _do_draw.
-        """
-        if self._show:
-            if not self._antialias:
-                context.set_antialias(cairo.ANTIALIAS_NONE)
-            self._do_draw(context, rect, yaxis)
-            context.set_antialias(cairo.ANTIALIAS_DEFAULT)
-
-    def _do_draw_tics(self, context, rect, yaxis):
-        if self._show_tics:
-            tics = self._range_calc.get_xtics(rect)
-            
-            #calculate yaxis position
-            (zx, zy) = self._range_calc.get_absolute_zero(rect, self, yaxis)
-            if yaxis.get_position() == POSITION_LEFT:
-                zx = rect.width * GRAPH_PADDING
-            elif yaxis.get_position() == POSITION_RIGHT:
-                zx = rect.width * (1 - GRAPH_PADDING)
-
-            for ((x,y), val) in tics:
-                if self._position == POSITION_TOP:
-                    y = rect.height * GRAPH_PADDING
-                elif self._position == POSITION_BOTTOM:
-                    y = rect.height * (1 - GRAPH_PADDING)
-                tic_height = rect.height / 80.0
-                context.move_to(x, y + tic_height / 2)
-                context.rel_line_to(0, - tic_height)
-                context.stroke()
+            if type(point_style) != gtk.gdk.Pixbuf:
+                chart.add_sensitive_area(chart.AREA_CIRCLE,
+                                            (posx, posy, point_size),
+                                            (graph, (x, y)))
+                graph_draw_point(context, posx, posy, point_size, point_style)
+                if (x, y) in highlighted:
+                    context.set_source_rgba(1, 1, 1, 0.3)
+                    graph_draw_point(context, posx, posy, point_size,
+                                                            point_style)
+                    context.set_source_rgb(*color_gdk_to_cairo(color))
+            else:
+                graph_draw_point_pixbuf(context, posx, posy, point_style)
                 
-                if self._show_tic_labels:
-                    if abs(x - zx) < 10:
-                        #the distance to the yaxis is to small => do not draw label
-                        continue
-                    pos = x, y + tic_height
-                    text = self._tic_format_function(val)
-                    tic_label = label.Label(pos, text, anchor=label.ANCHOR_TOP_CENTER, fixed=True)
-                    tic_label.draw(context, rect)
-
-    def _do_draw_label(self, context, rect, pos):
-        axis_label = label.Label(pos, self._label, anchor=label.ANCHOR_LEFT_CENTER, fixed=True)
-        axis_label.draw(context, rect)
-
-    def _do_draw(self, context, rect, yaxis):
-        """
-        Draw the axis.
-        """
-        (zx, zy) = self._range_calc.get_absolute_zero(rect, self, yaxis)
-        if self._position == POSITION_BOTTOM:
-            zy = rect.height * (1 - GRAPH_PADDING)
-        elif self._position == POSITION_TOP:
-            zy = rect.height * GRAPH_PADDING
-        if rect.height * GRAPH_PADDING <= zy and rect.height * (1 - GRAPH_PADDING) >= zy:
-            context.set_source_rgb(0, 0, 0)
-            #draw the line:
-            context.move_to(rect.width * GRAPH_PADDING, zy)
-            context.line_to(rect.width * (1 - GRAPH_PADDING), zy)
-            context.stroke()
-            #draw arrow:
-            context.move_to(rect.width * (1 - GRAPH_PADDING) + 3, zy)
-            context.rel_line_to(-3, -3)
-            context.rel_line_to(0, 6)
-            context.close_path()
-            context.fill()
-
-            if self._show_label:
-                self._do_draw_label(context, rect, (rect.width * (1 - GRAPH_PADDING) + 3, zy))
-            self._do_draw_tics(context, rect, yaxis)
-
-
-class YAxis(Axis):
-    """
-    This class represents the yaxis. It is used by the LineChart
-    widget internally, there is no need to create an instance yourself.
-    
-    Properties
-    ==========
-    The YAxis class inherits properties from Axis.
-    
-    Signals
-    =======
-    The YAxis class inherits signals from Axis.
-    """
-    def __init__(self, range_calc):
-        Axis.__init__(self, range_calc, "y")
-
-    def draw(self, context, rect, xaxis):
-        """
-        This method is called by the parent Plot instance. It
-        calls _do_draw.
-        """
-        if self._show:
-            if not self._antialias:
-                context.set_antialias(cairo.ANTIALIAS_NONE)
-            self._do_draw(context, rect, xaxis)
-            context.set_antialias(cairo.ANTIALIAS_DEFAULT)
-
-    def _do_draw_tics(self, context, rect, xaxis):
-        if self._show_tics:
-            tics = self._range_calc.get_ytics(rect)
-
-            #calculate xaxis position
-            (zx, zy) = self._range_calc.get_absolute_zero(rect, xaxis, self)
-            if xaxis.get_position() == POSITION_BOTTOM:
-                zy = rect.height * (1 - GRAPH_PADDING)
-            elif xaxis.get_position() == POSITION_TOP:
-                zy = rect.height * GRAPH_PADDING
-
-            for ((x,y), val) in tics:
-                if self._position == POSITION_LEFT:
-                    x = rect.width * GRAPH_PADDING
-                elif self._position == POSITION_RIGHT:
-                    x = rect.width * (1 - GRAPH_PADDING)
-                tic_width = rect.height / 80.0
-                context.move_to(x + tic_width / 2, y)
-                context.rel_line_to(- tic_width, 0)
-                context.stroke()
-
-                if self._show_tic_labels:
-                    if abs(y - zy) < 10:
-                        #distance to xaxis is to small => do not draw label
-                        continue
-                        
-                    pos = x - tic_width, y
-                    text = self._tic_format_function(val)
-                    tic_label = label.Label(pos, text, anchor=label.ANCHOR_RIGHT_CENTER, fixed=True)
-                    tic_label.draw(context, rect)
-
-
-    def _do_draw_label(self, context, rect, pos):
-        axis_label = label.Label(pos, self._label, anchor=label.ANCHOR_BOTTOM_CENTER, fixed=True)
-        axis_label.draw(context, rect)
-
-    def _do_draw(self, context, rect, xaxis):
-        (zx, zy) = self._range_calc.get_absolute_zero(rect, xaxis, self)
-        if self._position == POSITION_LEFT:
-            zx = rect.width * GRAPH_PADDING
-        elif self._position == POSITION_RIGHT:
-            zx = rect.width * (1 - GRAPH_PADDING)
-        if rect.width * GRAPH_PADDING <= zx and rect.width * (1 - GRAPH_PADDING) >= zx:
-            context.set_source_rgb(0, 0, 0)
-            #draw line:
-            context.move_to(zx, rect.height * (1 - GRAPH_PADDING))
-            context.line_to(zx, rect.height * GRAPH_PADDING)
-            context.stroke()
-            #draw arrow:
-            context.move_to(zx, rect.height * GRAPH_PADDING - 3)
-            context.rel_line_to(-3, 3)
-            context.rel_line_to(6, 0)
-            context.close_path()
-            context.fill()
-
-            if self._show_label:
-                self._do_draw_label(context, rect, (zx, rect.height * GRAPH_PADDING - 3))
-            self._do_draw_tics(context, rect, xaxis)
-
-
-class Grid(ChartObject):
-    """
-    A class representing the grid of the chart. It is used by the LineChart
-    widget internally, there is no need to create an instance yourself.
-    
-    Properties
-    ==========
-    The Grid class inherits properties from chart_object.ChartObject.
-    Additional properties:
-     - show-horizontal (sets whther to show horizontal grid lines,
-       type: boolean)
-     - show-vertical (sets whther to show vertical grid lines,
-       type: boolean)
-     - color (the color of the grid lines, type: gtk.gdk.Color)
-     - line-style-horizontal (the line style of the horizontal grid
-       lines, type: a line style constant)
-     - line-style-vertical (the line style of the vertical grid lines,
-       type: a line style constant).
-       
-    Signals
-    =======
-    The Grid class inherits signals from chart_object.ChartObject.
-    """
-
-    __gproperties__ = {"show-horizontal": (gobject.TYPE_BOOLEAN,
-                                    "show horizontal lines",
-                                    "Set whether to draw horizontal lines.",
-                                    True, gobject.PARAM_READWRITE),
-                        "show-vertical": (gobject.TYPE_BOOLEAN,
-                                    "show vertical lines",
-                                    "Set whether to draw vertical lines.",
-                                    True, gobject.PARAM_READWRITE),
-                        "color": (gobject.TYPE_PYOBJECT,
-                                    "grid color",
-                                    "The color of the grid in (r,g,b) format. r,g,b in [0,1]",
-                                    gobject.PARAM_READWRITE),
-                        "line-style-horizontal": (gobject.TYPE_INT,
-                                                "horizontal line style",
-                                                "Line Style for the horizontal grid lines",
-                                                0, 3, 0, gobject.PARAM_READWRITE),
-                        "line-style-vertical": (gobject.TYPE_INT,
-                                                "vertical line style",
-                                                "Line Style for the vertical grid lines",
-                                                0, 3, 0, gobject.PARAM_READWRITE)}
-
-    def __init__(self, range_calc):
-        ChartObject.__init__(self)
-        self.set_property("antialias", False)
-        self._range_calc = range_calc
-        self._color = gtk.gdk.color_parse("#DEDEDE")
-        self._show_h = True
-        self._show_v = True
-        self._line_style_h = pygtk_chart.LINE_STYLE_SOLID
-        self._line_style_v = pygtk_chart.LINE_STYLE_SOLID
-
-    def do_get_property(self, property):
-        if property.name == "visible":
-            return self._show
-        elif property.name == "antialias":
-            return self._antialias
-        elif property.name == "show-horizontal":
-            return self._show_h
-        elif property.name == "show-vertical":
-            return self._show_v
-        elif property.name == "color":
-            return self._color
-        elif property.name == "line-style-horizontal":
-            return self._line_style_h
-        elif property.name == "line-style-vertical":
-            return self._line_style_v
+def graph_draw_lines(context, rect, data, xrange, yrange, ppu_x, ppu_y,
+                        line_style, line_width, color, logscale):
+    context.set_source_rgb(*color_gdk_to_cairo(color))
+    context.set_line_width(line_width)
+    if line_style != pygtk_chart.LINE_STYLE_NONE:
+        set_context_line_style(context, line_style)
+        xdata, ydata = data
+        first_point = True
+        for i in range(0, len(xdata)):
+            x = xdata[i]
+            y = ydata[i]
+            if logscale[0]: x = math.log10(x)
+            if logscale[1]: y = math.log10(y)
+            if not xrange[0] <= x <= xrange[1]: continue
+            posx = rect.x + ppu_x * (x - xrange[0])
+            posy = rect.y + rect.height - ppu_y * (y - yrange[0])
+            
+            if first_point:
+                context.move_to(posx, posy)
+                first_point = False
+            else:
+                context.line_to(posx, posy)
+        context.stroke()
+    context.set_line_width(1)
+        
+def graph_new_constant(xmin, xmax, value):
+    g = Graph("", [xmin, xmax], [value, value])
+    return g
+        
+def graph_draw_fill_to(context, rect, data, xrange, yrange, ppu_x, ppu_y,
+                        fill_to, color, opacity, logscale):
+    fill_graph = None
+    xmin, xmax = xrange
+    if type(fill_to) == Graph:
+        fill_graph = fill_to
+        xmin = max(xrange[0], min(data[0]))
+        xmax = min(xrange[1], max(data[0]))
+    elif type(fill_to) in [int, float]:
+        if logscale[0]:
+            xmin = max(10 ** xrange[0], min(data[0]))
+            xmax = min(10 ** xrange[1], max(data[0]))
         else:
-            raise AttributeError, "Property %s does not exist." % property.name
-
-    def do_set_property(self, property, value):
-        if property.name == "visible":
-            self._show = value
-        elif property.name == "antialias":
-            self._antialias = value
-        elif property.name == "show-horizontal":
-            self._show_h = value
-        elif property.name == "show-vertical":
-            self._show_v = value
-        elif property.name == "color":
-            self._color = value
-        elif property.name == "line-style-horizontal":
-            self._line_style_h = value
-        elif property.name == "line-style-vertical":
-            self._line_style_v = value
-        else:
-            raise AttributeError, "Property %s does not exist." % property.name
-
-    def _do_draw(self, context, rect, xaxis, yaxis):
-        context.set_source_rgb(*color_gdk_to_cairo(self._color))
-        #draw horizontal lines
-        if self._show_h:
-            set_context_line_style(context, self._line_style_h)
-            ytics = self._range_calc.get_ytics(rect)
-            xa = rect.width * GRAPH_PADDING
-            xb = rect.width * (1 - GRAPH_PADDING)
-            for ((x, y), label) in ytics:
-                context.move_to(xa, y)
-                context.line_to(xb, y)
-                context.stroke()
-            context.set_dash([])
-
-        #draw vertical lines
-        if self._show_v:
-            set_context_line_style(context, self._line_style_v)
-            xtics = self._range_calc.get_xtics(rect)
-            ya = rect.height * GRAPH_PADDING
-            yb = rect.height * (1 - GRAPH_PADDING)
-            for ((x, y), label) in xtics:
-                context.move_to(x, ya)
-                context.line_to(x, yb)
-                context.stroke()
-            context.set_dash([])
-
-    def set_draw_horizontal_lines(self, draw):
-        """
-        Set whether to draw horizontal grid lines.
-
-        @type draw: boolean.
-        """
-        self.set_property("show-horizontal", draw)
-        self.emit("appearance_changed")
-
-    def get_draw_horizontal_lines(self):
-        """
-        Returns True if horizontal grid lines are drawn.
-
-        @return: boolean.
-        """
-        return self.get_property("show-horizontal")
-
-    def set_draw_vertical_lines(self, draw):
-        """
-        Set whether to draw vertical grid lines.
-
-        @type draw: boolean.
-        """
-        self.set_property("show-vertical", draw)
-        self.emit("appearance_changed")
-
-    def get_draw_vertical_lines(self):
-        """
-        Returns True if vertical grid lines are drawn.
-
-        @return: boolean.
-        """
-        return self.get_property("show-vertical")
-
-    def set_color(self, color):
-        """
-        Set the color of the grid.
-
-        @type color: gtk.gdk.Color
-        @param color: The new color of the grid.
-        """
-        self.set_property("color", color)
-        self.emit("appearance_changed")
-
-    def get_color(self):
-        """
-        Returns the color of the grid.
-
-        @return: gtk.gdk.Color.
-        """
-        return self.get_property("color")
+            xmin = max(xrange[0], min(data[0]))
+            xmax = min(xrange[1], max(data[0]))
+        fill_graph = graph_new_constant(xmin, xmax, fill_to)
         
-    def set_line_style_horizontal(self, style):
-        """
-        Set the line style of the horizontal grid lines.
-        style has to be one of these constants:
-         - pygtk_chart.LINE_STYLE_SOLID (default)
-         - pygtk_chart.LINE_STYLE_DOTTED
-         - pygtk_chart.LINE_STYLE_DASHED
-         - pygtk_chart.LINE_STYLE_DASHED_ASYMMETRIC.
+    if fill_graph != None:
+        c = color_gdk_to_cairo(color)
+        context.set_source_rgba(c[0], c[1], c[2], opacity)
+        other_data = fill_graph.get_points()[:]
         
-        @param style: the new line style
-        @type style: one of the constants above.
-        """
-        self.set_property("line-style-horizontal", style)
-        self.emit("appearance_changed")
+        oxdata, oydata = other_data
         
-    def get_line_style_horizontal(self):
-        """
-        Returns ths current horizontal line style.
+        xmin = max(xmin, min(oxdata))
+        xmax = min(xmax, max(oxdata))
+        other_data[0].reverse()
+        other_data[1].reverse()
+        first_point = True
         
-        @return: a line style constant.
-        """
-        return self.get_property("line-style-horizontal")
+        xdata, ydata = data
         
-    def set_line_style_vertical(self, style):
-        """
-        Set the line style of the vertical grid lines.
-        style has to be one of these constants:
-         - pygtk_chart.LINE_STYLE_SOLID (default)
-         - pygtk_chart.LINE_STYLE_DOTTED
-         - pygtk_chart.LINE_STYLE_DASHED
-         - pygtk_chart.LINE_STYLE_DASHED_ASYMMETRIC.
-        
-        @param style: the new line style
-        @type style: one of the constants above.
-        """
-        self.set_property("line-style-vertical", style)
-        self.emit("appearance_changed")
-        
-    def get_line_style_vertical(self):
-        """
-        Returns ths current vertical line style.
-        
-        @return: a line style constant.
-        """
-        return self.get_property("line-style-vertical")
-
+        for i in range(0, len(xdata)):
+            x, y = xdata[i], ydata[i]
+            if not xmin <= x <= xmax: continue
+            if logscale[0]: x = math.log10(x)
+            if logscale[1]: y = math.log10(y)
+            posx = rect.x + ppu_x * (x - xrange[0])
+            posy = rect.y + rect.height - ppu_y * (y - yrange[0])
+            
+            if first_point:
+                context.move_to(posx, posy)
+                first_point = False
+            else:
+                context.line_to(posx, posy)
+        for i in range(0, len(other_data[0])):
+            x, y = oxdata[i], oydata[i]
+            if not xmin <= x <= xmax: continue
+            if logscale[0]: x = math.log10(x)
+            if logscale[1]: y = math.log10(y)
+            posx = rect.x + ppu_x * (x - xrange[0])
+            posy = rect.y + rect.height - ppu_y * (y - yrange[0])
+            context.line_to(posx, posy)
+        context.fill()
+            
+    
+    
 
 class Graph(ChartObject):
-    """
-    This class represents a graph or the data you want to plot on your
-    LineChart widget.
     
-    Properties
-    ==========
-    The Graph class inherits properties from chart_object.ChartObject.
-    Additional properties:
-     - name (a unique id for the graph, type: string, read only)
-     - title (the graph's title, type: string)
-     - color (the graph's color, type: gtk.gdk.Color)
-     - type (graph type, type: a graph type constant)
-     - point-size (radius of the datapoints in px,
-       type: int in [1, 100])
-     - fill-to (set how to fill space under the graph, type: None,
-       Graph or float)
-     - fill-color (the color of the filling, type: gtk.gdk.Color)
-     - fill-opacity (the opacity of the filling, type: float in [0, 1])
-     - show-values (sets whether y values should be shown at the
-       datapoints, type: boolean)
-     - show-title (sets whether ot show the graph's title,
-       type: boolean)
-     - line-style (the graph's line style, type: a line style constant)
-     - point-style (the graph's datapoints' point style,
-       type: a point style constant)
-     - clickable (sets whether datapoints are sensitive for clicks,
-       type: boolean)
-     - show-xerrors (sets whether x errors should be shown if error data
-       is available, type: boolean)
-     - show-yerrors (sets whether y errors should be shown if error data
-       is available, type: boolean).
-       
-    Signals
-    =======
-    The Graph class inherits signals from chart_object.ChartObject.
-    """
-
-    __gproperties__ = {"name": (gobject.TYPE_STRING, "graph id",
-                                "The graph's unique name.",
-                                "", gobject.PARAM_READABLE),
-                        "title": (gobject.TYPE_STRING, "graph title",
-                                    "The title of the graph.", "",
-                                    gobject.PARAM_READWRITE),
-                        "color": (gobject.TYPE_PYOBJECT,
-                                    "graph color",
-                                    "The color of the graph in (r,g,b) format. r,g,b in [0,1].",
-                                    gobject.PARAM_READWRITE),
-                        "type": (gobject.TYPE_INT, "graph type",
-                                    "The type of the graph.", 1, 3, 3,
-                                    gobject.PARAM_READWRITE),
-                        "point-size": (gobject.TYPE_INT, "point size",
-                                        "Radius of the data points.", 1,
-                                        100, 2, gobject.PARAM_READWRITE),
-                        "fill-to": (gobject.TYPE_PYOBJECT, "fill to",
-                                    "Set how to fill space under the graph.",
-                                    gobject.PARAM_READWRITE),
-                        "fill-color": (gobject.TYPE_PYOBJECT, "fill color",
-                                    "Set which color to use when filling space under the graph.",
-                                    gobject.PARAM_READWRITE),
-                        "fill-opacity": (gobject.TYPE_FLOAT, "fill opacity",
-                                    "Set which opacity to use when filling space under the graph.",
-                                    0.0, 1.0, 0.3, gobject.PARAM_READWRITE),
-                        "show-values": (gobject.TYPE_BOOLEAN, "show values",
-                                    "Sets whether to show the y values.",
-                                    False, gobject.PARAM_READWRITE),
-                        "show-title": (gobject.TYPE_BOOLEAN, "show title",
-                                    "Sets whether to show the graph's title.",
-                                    True, gobject.PARAM_READWRITE),
-                        "line-style": (gobject.TYPE_INT, "line style",
-                                     "The line style to use.", 0, 3, 0,
-                                     gobject.PARAM_READWRITE),
-                        "point-style": (gobject.TYPE_PYOBJECT, "point style",
-                                        "The graph's point style.",
+    __gproperties__ = {"xrange": (gobject.TYPE_PYOBJECT,
+                                    "the xrange",
+                                    "The xrange of the graph.",
+                                    gobject.PARAM_READABLE),
+                        "yrange": (gobject.TYPE_PYOBJECT,
+                                    "the yrange",
+                                    "The yrange of the graph.",
+                                    gobject.PARAM_READABLE),
+                        "line-style": (gobject.TYPE_INT,
+                                        "line style",
+                                        "The line style for the graph.",
+                                        -1, 3, 0, gobject.PARAM_READWRITE),
+                        "line-width": (gobject.TYPE_INT,
+                                        "line width",
+                                        "The line width for the graph.",
+                                        1, 15, 1, gobject.PARAM_READWRITE),
+                        "point-style": (gobject.TYPE_PYOBJECT,
+                                        "point style",
+                                        "The point style for the graph.",
                                         gobject.PARAM_READWRITE),
-                        "clickable": (gobject.TYPE_BOOLEAN, "clickable",
-                                    "Sets whether datapoints should be clickable.",
-                                    True, gobject.PARAM_READWRITE),
-                        "show-xerrors": (gobject.TYPE_BOOLEAN,
-                                            "show xerrors",
-                                            "Set whether to show x-errorbars.",
-                                            True, gobject.PARAM_READWRITE),
-                        "show-yerrors": (gobject.TYPE_BOOLEAN,
-                                            "show yerrors",
-                                            "Set whether to show y-errorbars.",
-                                            True, gobject.PARAM_READWRITE)}
-
-    def __init__(self, name, title, data):
-        """
-        Create a new graph instance.
-        data should be a list of x,y pairs. If you want to provide
-        error data for a datapoint, the tuple for that point has to be
-        (x, y, xerror, yerror). If you want only one error, set the
-        other to zero. You can mix datapoints with and without error
-        data in data.
-
-        @type name: string
-        @param name: A unique name for the graph. This could be everything.
-        It's just a name used internally for identification. You need to know
-        this if you want to access or delete a graph from a chart.
-        @type title: string
-        @param title: The graphs title. This can be drawn on the chart.
-        @type data: list (see above)
-        @param data: This is the data you want to be visualized. For
-        detail see description above.
-        """
-        ChartObject.__init__(self)
+                        "point-size": (gobject.TYPE_INT,
+                                        "point size",
+                                        "The point size for the graph.",
+                                        1, 50, 2, gobject.PARAM_READWRITE),
+                        "color": (gobject.TYPE_PYOBJECT,
+                                        "color",
+                                        "Graph color.",
+                                        gobject.PARAM_READWRITE),
+                        "fill-to": (gobject.TYPE_PYOBJECT,
+                                    "fill the sapce under the graph",
+                                    "Fill the space under the graph or between \
+                                    two graphs.",
+                                    gobject.PARAM_READWRITE),
+                        "fill-opacity": (gobject.TYPE_FLOAT,
+                                        "opacity of the filled area",
+                                        "The opacity of filled areas.",
+                                        0.0, 1.0, 0.3,
+                                        gobject.PARAM_READWRITE),
+                        "highlighted": (gobject.TYPE_PYOBJECT,
+                                        "list of points to highlight",
+                                        "List of points to highlight.",
+                                        gobject.PARAM_READWRITE)}
+    
+    _xrange = None
+    _yrange = None
+    _line_style = pygtk_chart.LINE_STYLE_SOLID
+    _line_width = 1
+    _point_style = pygtk_chart.POINT_STYLE_CIRCLE
+    _point_size = 2
+    _color = COLOR_AUTO
+    _fill_to = None
+    _fill_opacity = 0.3
+    _highlighted = []
+    
+    def __init__(self, name, xdata, ydata):
+        super(Graph, self).__init__()
         self._name = name
-        self._title = title
-        self._data, self._errors = separate_data_and_errors(data)
-        self._color = COLOR_AUTO
-        self._type = GRAPH_BOTH
-        self._point_size = 2
-        self._show_value = False
-        self._show_title = True
-        self._fill_to = None
-        self._fill_color = COLOR_AUTO
-        self._fill_opacity = 0.3
-        self._line_style = pygtk_chart.LINE_STYLE_SOLID
-        self._point_style = pygtk_chart.POINT_STYLE_CIRCLE
-        self._clickable = True
-        self._draw_xerrors = True
-        self._draw_yerrors = True
-
-        self._range_calc = None
-        self._label = label.Label((0, 0), self._title, anchor=label.ANCHOR_LEFT_CENTER)
-
+        self._data = (xdata, ydata)
+        
+        self._process_data()
+        
+    def __len__(self):
+        return len(self._data)
+        
+    def __getitem__(self, item):
+        xdata, ydata = self._data
+        if isinstance(item, slice):
+            nxdata = xdata[item.start:item.stop:item.step]
+            nydata = ydata[item.start:item.stop:item.step]
+            name = "%s-%s:%s:%s" % (self._name, item.start, item.stop,
+                                    item.step)
+            g = Graph(name, nxdata, nydata)
+            return g
+        else:
+            return xdata[item], ydata[item]
+            
+    def __add__(self, other):
+        """
+        Concatenate the data of two graph objects.
+        """
+        xdata, ydata = self._data
+        oxdata, oydata = other.get_points()
+        xdata = safe_concatenation(xdata, oxdata)
+        ydata = safe_concatenation(ydata, oydata)
+        return Graph("%s+%s" % (self._name, other.get_name()), xdata, ydata)
+            
+    def __radd__(self, other):
+        """
+        Concatenate the data of two graph objects.
+        Swapped operands.
+        """
+        xdata, ydata = self._data
+        oxdata, oydata = other.get_points()
+        xdata = safe_concatenation(oxdata, xdata)
+        ydata = safe_concatenation(oydata, ydata)
+        return Graph("%s+%s" % (other.get_name(), self._name), xdata, ydata)
+            
+    def __iadd__(self, other):
+        """
+        Replace the graphs data with a concatenation of its data and the data
+        of other.
+        """
+        xdata, ydata = self._data
+        oxdata, oydata = other.get_points()
+        xdata = safe_concatenation(xdata, oxdata)
+        ydata = safe_concatenation(ydata, oydata)
+        self._data = xdata, ydata
+        return self
+        
+    def __mul__(self, n):
+        """
+        Repetition of the graphs data. Creates a periodic extension of the
+        graph in positive x direction.
+        """
+        nxdata = []
+        nydata = []
+        xdata, ydata = self._data
+        delta = abs(xdata[1] - xdata[0])
+        for i in range(0, n):
+            nxdata = safe_concatenation(nxdata,
+                                        map(lambda x: x + i * delta, xdata))
+            nydata = safe_concatenation(nydata, ydata)
+        return Graph("%s*%s" % (n, self._name), nxdata, nydata)
+        
     def do_get_property(self, property):
-        if property.name == "visible":
-            return self._show
-        elif property.name == "antialias":
-            return self._antialias
-        elif property.name == "name":
-            return self._name
-        elif property.name == "title":
-            return self._title
-        elif property.name == "color":
-            return self._color
-        elif property.name == "type":
-            return self._type
-        elif property.name == "point-size":
-            return self._point_size
-        elif property.name == "fill-to":
-            return self._fill_to
-        elif property.name == "fill-color":
-            return self._fill_color
-        elif property.name == "fill-opacity":
-            return self._fill_opacity
-        elif property.name == "show-values":
-            return self._show_value
-        elif property.name == "show-title":
-            return self._show_title
+        if property.name == "xrange":
+            return self._xrange
+        elif property.name == "yrange":
+            return self._yrange
         elif property.name == "line-style":
             return self._line_style
+        elif property.name == "line-width":
+            return self._line_width
         elif property.name == "point-style":
             return self._point_style
-        elif property.name == "clickable":
-            return self._clickable
-        elif property.name == "show-xerrors":
-            return self._draw_xerrors
-        elif property.name == "show-yerrors":
-            return self._draw_yerrors
-        else:
-            raise AttributeError, "Property %s does not exist." % property.name
-
-    def do_set_property(self, property, value):
-        if property.name == "visible":
-            self._show = value
-        elif property.name == "antialias":
-            self._antialias = value
-        elif property.name == "title":
-            self._label.set_text(value)
-            self._title = value
-        elif property.name == "color":
-            self._color = value
-        elif property.name == "type":
-            self._type = value
         elif property.name == "point-size":
-            self._point_size = value
+            return self._point_size
+        elif property.name == "color":
+            return self._color
         elif property.name == "fill-to":
-            self._fill_to = value
-        elif property.name == "fill-color":
-            self._fill_color = value
+            return self._fill_to
         elif property.name == "fill-opacity":
-            self._fill_opacity = value
-        elif property.name == "show-values":
-            self._show_value = value
-        elif property.name == "show-title":
-            self._show_title = value
-        elif property.name == "line-style":
+            return self._fill_opacity
+        elif property.name == "highlighted":
+            return self._highlighted
+        else:
+            return super(Graph, self).do_get_property(property)
+        
+    def do_set_property(self, property, value):
+        if property.name == "line-style":
             self._line_style = value
+        elif property.name == "line-width":
+            self._line_width = value
         elif property.name == "point-style":
             self._point_style = value
-        elif property.name == "clickable":
-            self._clickable = value
-        elif property.name == "show-xerrors":
-            self._draw_xerrors = value
-        elif property.name == "show-yerrors":
-            self._draw_yerrors = value
+        elif property.name == "point-size":
+            self._point_size = value
+        elif property.name == "color":
+            self._color = value
+        elif property.name == "fill-to":
+            if type(value) in [float, int, Graph]:
+                self._fill_to = value
+        elif property.name == "fill-opacity":
+            self._fill_opacity = value
+        elif property.name == "highlighted":
+            self._highlighted = value
         else:
-            raise AttributeError, "Property %s does not exist." % property.name
-
-    def has_something_to_draw(self):
-        return self._data != []
+            super(Graph, self).do_set_property(property, value)
         
-    def _do_draw_lines(self, context, rect, xrange, yrange, xaxis, yaxis):
-        context.set_source_rgb(*color_gdk_to_cairo(self._color))
-        
-        set_context_line_style(context, self._line_style)
-        
-        first_point = None
-        last_point = None
-        
-        for (x, y) in self._data:
-            
-            if xaxis.get_logarithmic():
-                x = math.log10(x)
-            if yaxis.get_logarithmic():
-                y = math.log10(y)
-                
-            if is_in_range(x, xrange) and is_in_range(y, yrange):
-                (ax, ay) = self._range_calc.get_absolute_point(rect, x, y, xaxis, yaxis)
-                if first_point == None:
-                    context.move_to(ax, ay)
-                    first_point = x, y
-                else:
-                    context.line_to(ax, ay)
-                last_point = ax, ay
-                    
-        context.stroke()
-        context.set_dash([])
-        return first_point, last_point
-        
-    def _do_draw_points(self, context, rect, xrange, yrange, xaxis, yaxis, highlighted_points):
-        context.set_source_rgb(*color_gdk_to_cairo(self._color))
-        
-        first_point = None
-        last_point = None
-        
-        for (x, y) in self._data:
-            if xaxis.get_logarithmic():
-                x = math.log10(x)
-            if yaxis.get_logarithmic():
-                y = math.log10(y)
-            
-            if is_in_range(x, xrange) and is_in_range(y, yrange):
-                (ax, ay) = self._range_calc.get_absolute_point(rect, x, y, xaxis, yaxis)
-                if self._clickable:
-                    chart.add_sensitive_area(chart.AREA_CIRCLE, (ax, ay, self._point_size), (x, y, self))
-                if first_point == None:
-                    context.move_to(ax, ay)
-                    
-                #draw errors
-                draw_errors(context, rect, self._range_calc, x, y, self._errors, self._draw_xerrors, self._draw_yerrors, xaxis, yaxis, self._point_size)
-                    
-                #draw the point
-                if type(self._point_style) != gtk.gdk.Pixbuf:
-                    draw_point(context, ax, ay, self._point_size, self._point_style)
-                    highlighted = (x, y, self) in highlighted_points
-                    if highlighted and self._clickable:
-                        context.set_source_rgba(1, 1, 1, 0.3)
-                        draw_point(context, ax, ay, self._point_size, self._point_style)
-                        context.set_source_rgb(*color_gdk_to_cairo(self._color))
-                else:
-                    draw_point_pixbuf(context, ax, ay, self._point_style)
-                    
-                last_point = ax, ay
-        return first_point, last_point
-        
-    def _do_draw_values(self, context, rect, xrange, yrange, xaxis, yaxis):
-        anchors = {}
-        first_point = True
-        for i, (x, y) in enumerate(self._data):
-            
-            if xaxis.get_logarithmic():
-                x = math.log10(x)
-            if yaxis.get_logarithmic():
-                y = math.log10(y)
-            
-            if is_in_range(x, xrange) and is_in_range(y, yrange):
-                next_point = None
-                if i + 1 < len(self._data) and (is_in_range(self._data[i + 1][0], xrange) and is_in_range(self._data[i + 1][1], yrange)):
-                    next_point = self._data[i + 1]
-                if first_point:
-                    if next_point != None:
-                        if next_point[1] >= y:
-                            anchors[(x, y)] = label.ANCHOR_TOP_LEFT
-                        else:
-                            anchors[(x, y)] = label.ANCHOR_BOTTOM_LEFT
-                    first_point = False
-                else:
-                    previous_point = self._data[i - 1]
-                    if next_point != None:
-                        if previous_point[1] <= y <= next_point[1]:
-                            anchors[(x, y)] = label.ANCHOR_BOTTOM_RIGHT
-                        elif previous_point[1] > y > next_point[1]:
-                            anchors[(x, y)] = label.ANCHOR_BOTTOM_LEFT
-                        elif previous_point[1] < y and next_point[1] < y:
-                            anchors[(x, y)] = label.ANCHOR_BOTTOM_CENTER
-                        elif previous_point[1] > y and next_point[1] > y:
-                            anchors[(x, y)] = label.ANCHOR_TOP_CENTER
-                    else:
-                        if previous_point[1] >= y:
-                            anchors[(x, y)] = label.ANCHOR_TOP_RIGHT
-                        else:
-                            anchors[(x, y)] = label.ANCHOR_BOTTOM_RIGHT
-                            
-        for x, y in self._data:
-            
-            if xaxis.get_logarithmic():
-                x = math.log10(x)
-            if yaxis.get_logarithmic():
-                y = math.log10(y)
-            
-            if (x, y) in anchors and is_in_range(x, xrange) and is_in_range(y, yrange):
-                (ax, ay) = self._range_calc.get_absolute_point(rect, x, y, xaxis, yaxis)
-                value_label = label.Label((ax, ay), str(y), anchor=anchors[(x, y)])
-                value_label.set_color(self._color)
-                value_label.draw(context, rect)
-
-    def _do_draw_title(self, context, rect, last_point, xaxis, yaxis):
+    def _process_data(self):
         """
-        Draws the title.
-
-        @type context: cairo.Context
-        @param context: The context to draw on.
-        @type rect: gtk.gdk.Rectangle
-        @param rect: A rectangle representing the charts area.
-        @type last_point: pairs of numbers
-        @param last_point: The absolute position of the last drawn data point.
+        Sorts data points and calculates ranges.
         """
-        if last_point:
-            x = last_point[0] + 5
-            y = last_point[1]
-            self._label.set_position((x, y))
-            self._label.set_color(self._color)
-            self._label.draw(context, rect)
-            
-    def _do_draw_fill(self, context, rect, xrange, xaxis, yaxis):
-        if type(self._fill_to) in (int, float):
-            data = []
-            for i, (x, y) in enumerate(self._data):
-                
-                if xaxis.get_logarithmic():
-                    x = math.log10(x)
-                if yaxis.get_logarithmic():
-                    y = math.log10(y)
-                
-                if is_in_range(x, xrange) and not data:
-                    data.append((x, self._fill_to))
-                elif not is_in_range(x, xrange) and len(data) == 1:
-                    data.append((prev, self._fill_to))
-                    break
-                elif i == len(self._data) - 1:
-                    data.append((x, self._fill_to))
-                prev = x
-            graph = Graph("none", "", data)
-        elif type(self._fill_to) == Graph:
-            graph = self._fill_to
-            d = graph.get_data()
-            range_b = d[0][0], d[-1][0]
-            xrange = intersect_ranges(xrange, range_b)
-            
-        if not graph.get_visible(): return
+        self._xrange, self._yrange = graph_make_ranges(self._data)
         
-        c = self._fill_color
-        if c == COLOR_AUTO: c = self._color
-        c = color_gdk_to_cairo(c)
-        context.set_source_rgba(c[0], c[1], c[2], self._fill_opacity)
+    def _do_draw(self, context, rect, xrange, yrange, color, logscale):
+        #ppu: pixel per unit
+        ppu_x = float(rect.width) / abs(xrange[0] - xrange[1])
+        ppu_y = float(rect.height) / abs(yrange[0] - yrange[1])
         
-        data_a = self._data
-        data_b = graph.get_data()
+        graph_draw_fill_to(context, rect, self._data, xrange, yrange, ppu_x,
+                            ppu_y, self._fill_to, color, self._fill_opacity,
+                            logscale)
+        graph_draw_lines(context, rect, self._data, xrange, yrange, ppu_x,
+                            ppu_y, self._line_style, self._line_width, color,
+                            logscale)                
+        graph_draw_points(self, context, rect, self._data, xrange, yrange,
+                            ppu_x, ppu_y, self._point_style, color,
+                            self._point_size, self._highlighted, logscale)    
         
-        first = True
-        start_point = (0, 0)
-        for x, y in data_a:
-            
-            if xaxis.get_logarithmic():
-                x = math.log10(x)
-            if yaxis.get_logarithmic():
-                y = math.log10(y)
-            
-            if is_in_range(x, xrange):
-                xa, ya = self._range_calc.get_absolute_point(rect, x, y, xaxis, yaxis)
-                if first:
-                    context.move_to(xa, ya)
-                    start_point = xa, ya
-                    first = False
-                else:
-                    context.line_to(xa, ya)
-                
-        first = True
-        for i in range(0, len(data_b)):
-            j = len(data_b) - i - 1
-            x, y = data_b[j]
-            xa, ya = self._range_calc.get_absolute_point(rect, x, y, xaxis, yaxis)
-            if is_in_range(x, xrange):
-                context.line_to(xa, ya)
-        context.line_to(*start_point)
-        context.fill()
-
-    def _do_draw(self, context, rect, xaxis, yaxis, highlighted_points):
-        """
-        Draw the graph.
-
-        @type context: cairo.Context
-        @param context: The context to draw on.
-        @type rect: gtk.gdk.Rectangle
-        @param rect: A rectangle representing the charts area.
-        """
-        (xrange, yrange) = self._range_calc.get_ranges(xaxis, yaxis)
-                
-        if self._type in [GRAPH_LINES, GRAPH_BOTH]:
-            first_point, last_point = self._do_draw_lines(context, rect, xrange, yrange, xaxis, yaxis)
-            
-        if self._type in [GRAPH_POINTS, GRAPH_BOTH]:
-            first_point, last_point = self._do_draw_points(context, rect, xrange, yrange, xaxis, yaxis, highlighted_points)
-
-        if self._fill_to != None:
-            self._do_draw_fill(context, rect, xrange, xaxis, yaxis)
+    def get_points(self):
+        return self._data
         
-        if self._show_value and self._type in [GRAPH_POINTS, GRAPH_BOTH]:
-            self._do_draw_values(context, rect, xrange, yrange, xaxis, yaxis)
-
-        if self._show_title:
-            self._do_draw_title(context, rect, last_point, xaxis, yaxis)
-
-    def get_x_range(self):
-        """
-        Get the the endpoints of the x interval.
-
-        @return: pair of numbers
-        """
-        try:
-            self._data.sort(lambda x, y: cmp(x[0], y[0]))
-            return (self._data[0][0], self._data[-1][0])
-        except:
-            return None
-
-    def get_y_range(self):
-        """
-        Get the the endpoints of the y interval.
-
-        @return: pair of numbers
-        """
-        try:
-            self._data.sort(lambda x, y: cmp(x[1], y[1]))
-            return (self._data[0][1], self._data[-1][1])
-        except:
-            return None
-
     def get_name(self):
+        return self._name
+        
+    def add_point(self, point):
         """
-        Get the name of the graph.
-
-        @return: string
+        Add a single data point [(x, y) pair] to the graph.
         """
-        return self.get_property("name")
-
-    def get_title(self):
-        """
-        Returns the title of the graph.
-
-        @return: string
-        """
-        return self.get_property("title")
-
-    def set_title(self, title):
-        """
-        Set the title of the graph.
-
-        @type title: string
-        @param title: The graph's new title.
-        """
-        self.set_property("title", title)
+        x, y = point
+        self._data[0].append(x)
+        self._data[1].append(y)
+        self._process_data()
         self.emit("appearance_changed")
-
-    def set_range_calc(self, range_calc):
-        self._range_calc = range_calc
-
-    def get_color(self):
+        
+    def add_points(self, points):
         """
-        Returns the current color of the graph or COLOR_AUTO.
-
-        @return: gtk.gdk.Color or COLOR_AUTO.
+        Add a list of data points [(x, y) pairs] to the graph.
         """
-        return self.get_property("color")
-
-    def set_color(self, color):
-        """
-        Set the color of the graph.
-        If set to COLOR_AUTO, the color will be choosen dynamicly.
-
-        @type color: gtk.gdk.Color
-        @param color: The new color of the graph.
-        """
-        self.set_property("color", color)
+        self._data[0] += points[0]
+        self._data[1] += points[1]
+        self._process_data()
         self.emit("appearance_changed")
-
-    def get_type(self):
+        
+    def set_points(self, points):
         """
-        Returns the type of the graph.
-
-        @return: a type constant (see set_type() for details)
+        Replace the data points of the graph with a new list of points
+        [(x, y) pairs].
         """
-        return self.get_property("type")
-
-    def set_type(self, type):
-        """
-        Set the type of the graph to one of these:
-         - GRAPH_POINTS: only show points
-         - GRAPH_LINES: only draw lines
-         - GRAPH_BOTH: draw points and lines, i.e. connect points with lines
-
-        @param type: One of the constants above.
-        """
-        self.set_property("type", type)
+        self._data = points
+        self._process_data()
         self.emit("appearance_changed")
-
+        
+    def get_ranges(self):
+        """
+        Returns the xrange and the yrange of the graph.
+        """
+        return self.get_xrange(), self.get_yrange()
+        
+    def get_xrange(self):
+        """
+        Returns the xrange of this graph. The xrange is a pair
+        holding the minimum and the maximum x values (xmin, xmax).
+        
+        @return: pair of float
+        """
+        return self.get_property("xrange")
+        
+    def get_yrange(self):
+        """
+        Returns the yrange of this graph. The yrange is a pair
+        holding the minimum and the maximum y values (ymin, ymax).
+        
+        @return: pair of float
+        """
+        return self.get_property("yrange")
+        
+    def get_line_style(self):
+        """
+        Returns the line style for this graph.
+        
+        (getter method for property 'line-style', see setter method for
+        details)
+        
+        @return: a line style constant
+        """
+        return self.get_property("line-style")
+        
+    def set_line_style(self, style):
+        """
+        Set the line style of the graph. style has to be one of these
+        line style constants:
+         - pygtk_chart.LINE_STYLE_NONE = -1
+         - pygtk_chart.LINE_STYLE_SOLID = 0
+         - pygtk_chart.LINE_STYLE_DOTTED = 1
+         - pygtk_chart.LINE_STYLE_DASHED = 2
+         - pygtk_chart.LINE_STYLE_DASHED_ASYMMETRIC = 3
+         
+        This is the setter method for the property 'line-style'.
+        Property type: gobject.TYPE_INT
+        Property minimum value: -1
+        Property maximum value: 3
+        Property default value: 0 (pygtk_chart.LINE_STYLE_SOLID)
+        
+        @type style: a line style constant (see above)
+        """
+        self.set_property("line-style", style)
+        self.emit("appearance_changed")
+    
+    def get_line_width(self):
+        """
+        Returns the line width for this graph.
+        
+        @return: int
+        """
+        return self.get_property("line-width")
+        
+    def set_line_width(self, width):
+        """
+        Set the line width for this graph.
+        
+        @param width: new line width
+        @type width: int
+        """
+        self.set_property("line-width", width)
+        self.emit("appearance_changed")
+        
+    def get_point_style(self):
+        """
+        Returns the point style for this graph.
+        
+        (getter method for property 'point-style', see setter method for
+        details)
+        
+        @return: a point style constant, or a gtk.gdk.Pixbuf
+        """
+        return self.get_property("point-style")
+        
+    def set_point_style(self, style):
+        """
+        Set the point style of the graph. style either has to be one of
+        these point style constants:
+         - pygtk_chart.POINT_STYLE_NONE = -1
+         - pygtk_chart.POINT_STYLE_CIRCLE = 0
+         - pygtk_chart.POINT_STYLE_SQUARE = 1
+         - pygtk_chart.POINT_STYLE_CROSS = 2
+         - pygtk_chart.POINT_STYLE_TRIANGLE_UP = 3
+         - pygtk_chart.POINT_STYLE_TRIANGLE_DOWN = 4
+         - pygtk_chart.POINT_STYLE_DIAMOND = 5
+        or a gtk.gdk.Pixbuf. If style is a pixbuf, the pixbuf will be
+        drawn instead of points.
+         
+        This is the setter method for the property 'point-style'.
+        Property type: gobject.TYPE_PYOBJECT
+        Property default value: 0 (pygtk_chart.POINT_STYLE_CIRCLE)
+        
+        @type style: a point style constant or gtk.gdk.Pixbuf
+        """
+        self.set_property("point-style", style)
+        
     def get_point_size(self):
         """
-        Returns the radius of the data points.
-
-        @return: a poisitive integer
+        Returns the point size in pixels.
+        
+        (getter method for property 'point-size', see setter method for
+        details)
+        
+        @return: int
         """
-        return self.get_property("point_size")
-
+        return self.get_property("point-size")
+        
     def set_point_size(self, size):
         """
-        Set the radius of the drawn points.
-
-        @type size: a positive integer in [1, 100]
-        @param size: The new radius of the points.
+        Sets the radius of the datapoints in pixels. If the point style
+        is a gtk.gdk.Pixbuf, the point size does not have any effect.
+        
+        This is the setter method for the property 'point-size'.
+        Property type: gobject.TYPE_INT
+        Property minimum value: 1
+        Property maximum value: 50
+        Property default value: 2
+        
+        @param size: point size in px
+        @type size: int
         """
-        self.set_property("point_size", size)
-        self.emit("appearance_changed")
-
+        self.set_property("point-size", size)
+        
+    def get_color(self):
+        """
+        Returns the manually set color of the graph or
+        pygtk_chart.COLOR_AUTO.
+        
+        (getter method for property 'color', see setter method for
+        details)
+        
+        @return: gtk.gdk.COLOR or pygtk_chart.COLOR_AUTO
+        """
+        return self.get_property("color")
+        
+    def set_color(self, color):
+        """
+        Set the color of the graph. color has to be a gtk.gdk.Color
+        or pygtk_chart.COLOR_AUTO.
+        
+        This is the setter method for the property 'color'.
+        Property type: gobject.TYPE_PYOBJECT
+        Property default value: pygtk_chart.COLOR_AUTO
+        
+        @param color: the color of the graph
+        @type color: gtk.gdk.Color or pygtk_chart.COLOR_AUTO
+        """
+        self.set_property("color", color)
+        
     def get_fill_to(self):
         """
-        The return value of this method depends on the filling under
-        the graph. See set_fill_to() for details.
+        If the area under the graph or bewteen is filled, this returns
+        the value or the graph to which the area is filled.
+        Otherwise None is returned.
+        
+        (getter method for property 'fill-to', see setter method for
+        details)
+        
+        @return: int, float, line_chart.Graph or None
         """
         return self.get_property("fill-to")
-
-    def set_fill_to(self, fill_to):
-        """
-        Use this method to specify how the space under the graph should
-        be filled. fill_to has to be one of these:
         
-         - None: dont't fill the space under the graph.
-         - int or float: fill the space to the value specified (setting
-           fill_to=0 means filling the space between graph and xaxis).
-         - a Graph object: fill the space between this graph and the
-           graph given as the argument.
-           
-        The color of the filling is the graph's color with 30% opacity.
-           
-        @type fill_to: one of the possibilities listed above.
+    def set_fill_to(self, fill):
         """
-        self.set_property("fill-to", fill_to)
-        self.emit("appearance_changed")
+        Sets whether and how the area under the graph should be filled.
+        If fill is int or float, the area between this value and the
+        graph is filled. If fill is a line_chart.Graph, the area
+        between the two graphs if filled.
+        The area will be filled with the color of the graph and the
+        opacity set by 'fill-opacity'.
+        Set fill to None if you do not want anything filled.
         
-    def get_fill_color(self):
-        """
-        Returns the color that is used to fill space under the graph
-        or COLOR_AUTO.
+        This is the setter method for the property 'fill-to'.
+        Property type: gobject.TYPE_PYOBJECT
+        Property default value: None
         
-        @return: gtk.gdk.Color or COLOR_AUTO.
+        @type fill: int, float, line_chart.Graph or None
         """
-        return self.get_property("fill-color")
-        
-    def set_fill_color(self, color):
-        """
-        Set which color should be used when filling the space under a
-        graph.
-        If color is COLOR_AUTO, the graph's color will be used.
-        
-        @type color: gtk.gdk.Color or COLOR_AUTO.
-        """
-        self.set_property("fill-color", color)
-        self.emit("appearance_changed")
+        self.set_property("fill-to", fill)
         
     def get_fill_opacity(self):
         """
-        Returns the opacity that is used to fill space under the graph.
+        Returns the opacity of filled areas under the graph.
+        
+        (getter method for property 'fill-opacity', see setter method
+        for details)
+        
+        @return: float
         """
         return self.get_property("fill-opacity")
         
     def set_fill_opacity(self, opacity):
         """
-        Set which opacity should be used when filling the space under a
-        graph. The default is 0.3.
+        Set the opacity of filled areas under the graph.
         
-        @type opacity: float in [0, 1].
+        This is the setter method for the property 'fill-opacity'.
+        Property type: gobject.TYPE_FLOAT
+        Property minimum value: 0.0
+        Property maximum value: 1.0
+        Property default value: 0.3
+        
+        @type opacity: float
         """
         self.set_property("fill-opacity", opacity)
-        self.emit("appearance_changed")
+        
+    def get_highlighted(self):
+        """
+        Returns a list of highlighted datapoints.
+        
+        (getter method for property 'highlighted', see setter method
+        for details)
+        
+        @return: list of datapoints
+        """
+        return self.get_property("highlighted")
+        
+    def set_highlighted(self, points):
+        """
+        Set the list points to be highlighted.
+        
+        This is the setter method for the property 'highlighted'.
+        Property type: gobject.TYPE_PYOBJECT
+        Property default value: []
+        
+        @type points: a list of points
+        """
+        self.set_property("highlighted", points)
+        
+    def add_highlighted(self, point):
+        """
+        Add a point to the highlighted list.
+        """
+        self._highlighted.append(point)
+        
+        
 
-    def get_show_values(self):
-        """
-        Returns True if y values are shown.
-
-        @return: boolean
-        """
-        return self.get_property("show-values")
-
-    def set_show_values(self, show):
-        """
-        Set whether the y values should be shown (only if graph type
-        is GRAPH_POINTS or GRAPH_BOTH).
-
-        @type show: boolean
-        """
-        self.set_property("show-values", show)
-        self.emit("appearance_changed")
-
-    def get_show_title(self):
-        """
-        Returns True if the title of the graph is shown.
-
-        @return: boolean.
-        """
-        return self.get_property("show-title")
-
-    def set_show_title(self, show):
-        """
-        Set whether to show the graph's title or not.
-
-        @type show: boolean.
-        """
-        self.set_property("show-title", show)
-        self.emit("appearance_changed")
-
-    def add_data(self, data_list):
-        """
-        Add data to the graph.
-        data_list should be a list of x,y pairs. If you want to provide
-        error data for a datapoint, the tuple for that point has to be
-        (x, y, xerror, yerror). If you want only one error, set the
-        other to zero. You can mix datapoints with and without error
-        data in data_list.
-
-        @type data_list: a list (see above).
-        """
-        new_data, new_errors = separate_data_and_errors(data_list)
-        self._data += new_data
-        self._errors = dict(self._errors, **new_errors)
-        self._range_calc.add_graph(self)
-        
-    def get_data(self):
-        """
-        Returns the data of the graph.
-        
-        @return: a list of x, y pairs.
-        """
-        return self._data
-        
-    def set_line_style(self, style):
-        """
-        Set the line style that should be used for drawing the graph
-        (if type is line_chart.GRAPH_LINES or line_chart.GRAPH_BOTH).
-        style has to be one of these constants:
-         - pygtk_chart.LINE_STYLE_SOLID (default)
-         - pygtk_chart.LINE_STYLE_DOTTED
-         - pygtk_chart.LINE_STYLE_DASHED
-         - pygtk_chart.LINE_STYLE_DASHED_ASYMMETRIC.
-        
-        @param style: the new line style
-        @type style: one of the line style constants above.
-        """
-        self.set_property("line-style", style)
-        self.emit("appearance_changed")
-        
-    def get_line_style(self):
-        """
-        Returns the current line style for the graph (see
-        L{set_line_style} for details).
-        
-        @return: a line style constant.
-        """
-        return self.get_property("line-style")
-        
-    def set_point_style(self, style):
-        """
-        Set the point style that should be used when drawing the graph
-        (if type is line_chart.GRAPH_POINTS or line_chart.GRAPH_BOTH).
-        For style you can use one of these constants:
-         - pygtk_chart.POINT_STYLE_CIRCLE (default)
-         - pygtk_chart.POINT_STYLE_SQUARE
-         - pygtk_chart.POINT_STYLE_CROSS
-         - pygtk_chart.POINT_STYLE_TRIANGLE_UP
-         - pygtk_chart.POINT_STYLE_TRIANGLE_DOWN
-         - pygtk_chart.POINT_STYLE_DIAMOND
-        style can also be a gtk.gdk.Pixbuf that should be used as point.
-        
-        @param style: the new point style
-        @type style: one of the cosnatnts above or gtk.gdk.Pixbuf.
-        """
-        self.set_property("point-style", style)
-        self.emit("appearance_changed")
-        
-    def get_point_style(self):
-        """
-        Returns the current point style. See L{set_point_style} for 
-        details.
-        
-        @return: a point style constant or gtk.gdk.Pixbuf.
-        """
-        return self.get_property("point-style")
-        
-    def set_clickable(self, clickable):
-        """
-        Set whether the datapoints of the graph should be clickable
-        (only if the datapoints are shown).
-        If this is set to True, the LineChart will emit the signal
-        'datapoint-clicked' when a datapoint was clicked.
-        
-        @type clickable: boolean.
-        """
-        self.set_property("clickable", clickable)
-        self.emit("appearance_changed")
-        
-    def get_clickable(self):
-        """
-        Returns True if the datapoints of the graph are clickable.
-        
-        @return: boolean.
-        """
-        return self.get_property("clickable")
-        
-    def set_show_xerrors(self, show):
-        """
-        Use this method to set whether x-errorbars should be shown
-        if error data is available.
-        
-        @type show: boolean.
-        """
-        self.set_property("show-xerrors", show)
-        self.emit("appearance_changed")
-        
-    def get_show_xerrors(self):
-        """
-        Returns True if x-errorbars should be drawn if error data is
-        available.
-        
-        @return: boolean.
-        """
-        return self.get_property("show-xerrors")
-        
-    def set_show_yerrors(self, show):
-        """
-        Use this method to set whether y-errorbars should be shown
-        if error data is available.
-        
-        @type show: boolean.
-        """
-        self.set_property("show-yerrors", show)
-        self.emit("appearance_changed")
-        
-    def get_show_yerrors(self):
-        """
-        Returns True if y-errorbars should be drawn if error data is
-        available.
-        
-        @return: boolean.
-        """
-        return self.get_property("show-yerrors")
-        
-        
-def graph_new_from_function(func, xmin, xmax, graph_name, samples=100, do_optimize_sampling=True):
-    """
-    Returns a line_chart.Graph with data created from the function
-    y = func(x) with x in [xmin, xmax]. The id of the new graph is
-    graph_name.
-    The parameter samples gives the number of points that should be
-    evaluated in [xmin, xmax] (default: 100).
-    If do_optimize_sampling is True (default) additional points will be
-    evaluated to smoothen the curve.
-    
-    @type func: a function
-    @param func: the function to evaluate
-    @type xmin: float
-    @param xmin: the minimum x value to evaluate
-    @type xmax: float
-    @param xmax: the maximum x value to evaluate
-    @type graph_name: string
-    @param graph_name: a unique name for the new graph
-    @type samples: int
-    @param samples: number of samples
-    @type do_optimize_sampling: boolean
-    @param do_optimize_sampling: set whether to add additional points
-    
-    @return: line_chart.Graph    
-    """
-    delta = (xmax - xmin) / float(samples - 1)
-    data = []
-    x = xmin
-    while x <= xmax:
-        data.append((x, func(x)))
-        x += delta
-        
-    if do_optimize_sampling:
-        data = optimize_sampling(func, data)
-        
-    return Graph(graph_name, "", data)
-    
-def optimize_sampling(func, data):
-    new_data = []
-    prev_point = None
-    prev_slope = None
-    for x, y in data:
-        if prev_point != None:
-            if (x - prev_point[0]) == 0: return data
-            slope = (y - prev_point[1]) / (x - prev_point[0])
-            if prev_slope != None:
-                if abs(slope - prev_slope) >= 0.1:
-                    nx = prev_point[0] + (x - prev_point[0]) / 2.0
-                    ny = func(nx)
-                    new_data.append((nx, ny))
-                    #print abs(slope - prev_slope), prev_point[0], nx, x
-            prev_slope = slope
-        
-        prev_point = x, y
-    
-    if new_data:
-        data += new_data
-        data.sort(lambda x, y: cmp(x[0], y[0]))
-        return optimize_sampling(func, data)
+def chart_calculate_ranges(xrange, yrange, x_graphs, y_graphs, extend_x=(0, 0),
+                            extend_y=(0, 0), logscale=(False, False)):
+    if xrange != RANGE_AUTO:
+        #the xrange was set manually => no calculation neccessary
+        calc_xrange = xrange
     else:
-        return data
-        
-def graph_new_from_file(filename, graph_name, x_col=0, y_col=1, xerror_col=-1, yerror_col=-1):
-    """
-    Returns a line_chart.Graph with point taken from data file
-    filename.
-    The id of the new graph is graph_name.    
-    
-    Data file format:
-    The columns in the file have to be separated by tabs or one
-    or more spaces. Everything after '#' is ignored (comment).
-    
-    Use the parameters x_col and y_col to control which columns to use
-    for plotting. By default, the first column (x_col=0) is used for
-    x values, the second (y_col=1) is used for y values.
-    
-    The parameters xerror_col and yerror_col should point to the column
-    in which the x/y error values are. If you do not want to provide
-    x or y error data, omit the paramter or set it to -1 (default).
-    
-    @type filename: string
-    @param filename: path to the data file
-    @type graph_name: string
-    @param graph_name: a unique name for the graph
-    @type x_col: int
-    @param x_col: the number of the column to use for x values
-    @type y_col: int
-    @param y_col: the number of the column to use for y values
-    @type xerror_col: int
-    @param xerror_col: index of the column for x error values
-    @type yerror_col: int
-    @param yerror_col: index of the column for y error values
-    
-    @return: line_chart.Graph
-    """
-    points = []
-    f = open(filename, "r")
-    data = f.read()
-    f.close()
-    lines = data.split("\n")
-    
-    for line in lines:
-        line = line.strip() #remove special characters at beginning and end
-        
-        #remove comments:
-        a = line.split("#", 1)
-        if a and a[0]:
-            line = a[0]
-            #get data from line:
-            if line.find("\t") != -1:
-                #col separator is tab
-                d = line.split("\t")
+        #calculate the xrange from graphs. (0, 1) if there is no graph
+        calc_xrange = None
+        for graph in x_graphs:
+            if not graph.get_visible() or len(graph) == 0: continue
+            g_xrange, g_yrange = graph.get_ranges()
+            if calc_xrange == None:
+                calc_xrange = g_xrange
             else:
-                #col separator is one or more space
-                #normalize to one space:
-                while line.find("  ") != -1:
-                    line = line.replace("  ", " ")
-                d = line.split(" ")
-            d = filter(lambda x: x, d)
-            d = map(lambda x: float(x), d)
+                calc_xrange = min(calc_xrange[0], g_xrange[0]), \
+                                max(calc_xrange[1], g_xrange[1])
+        if calc_xrange == None:
+            calc_xrange = (0, 1)
+        else:
+            delta = abs(calc_xrange[1] - calc_xrange[0])
+            calc_xrange = (calc_xrange[0] - delta * extend_x[0],
+                            calc_xrange[1] + delta * extend_x[1])
             
-            new_data = (d[x_col], d[y_col])
-            
-            if xerror_col != -1 or yerror_col != -1:
-                xerror = 0
-                yerror = 0
+    if yrange != RANGE_AUTO:
+        #the yrange was set manually => no calculation neccessary
+        calc_yrange = yrange
+    else:
+        #calculate the yrange from graphs. (0, 1) if there is no graph
+        calc_yrange = None
+        for graph in y_graphs:
+            if not graph.get_visible() or len(graph) == 0: continue
+            g_xrange, g_yrange = graph.get_ranges()
+            if calc_yrange == None:
+                calc_yrange = g_yrange
+            else:
+                calc_yrange = min(calc_yrange[0], g_yrange[0]), \
+                                max(calc_yrange[1], g_yrange[1])
                 
-                if xerror_col != -1:
-                    xerror = d[xerror_col]
-                if yerror_col != -1:
-                    yerror = d[yerror_col]
-                
-                new_data = (d[x_col], d[y_col], xerror, yerror)
-                
-            points.append(new_data)
-    return Graph(graph_name, "", points)
+        if calc_yrange == None:
+            calc_yrange = (0, 1)
+        else:
+            delta = abs(calc_yrange[1] - calc_yrange[0])
+            calc_yrange = (calc_yrange[0] - delta * extend_y[0],
+                            calc_yrange[1] + delta * extend_y[1])
+                            
+    if logscale[0]:
+        if calc_xrange[0] <= 0: calc_xrange = (0.001, calc_xrange[1])
+        calc_xrange = map(math.log10, calc_xrange)
+    if logscale[1]:
+        if calc_yrange[0] <= 0: calc_yrange = (0.001, calc_yrange[1])
+        calc_yrange = map(math.log10, calc_yrange)
+        
+    return calc_xrange, calc_yrange
+    
+    
+def chart_calculate_tics_for_range(crange, logscale):
+    """
+    This function calculates the tics that should be drawn for a given
+    range.
+    """
+    tics = []
+    if not logscale:
+        delta = abs(crange[0] - crange[1])
+        exp = int(math.log10(delta))
+        
+        ten_exp = math.pow(10, exp) #store this value for performance reasons
+        
+        if delta / ten_exp < 1:
+            ten_exp = ten_exp / 10
+        
+        m = int(crange[0] / ten_exp) - 1
+        n = int(crange[1] / ten_exp) + 1
+        for i in range(m, n + 1):
+            for j in range(0, 10):
+                tics.append((i + j / 10.0) * ten_exp)
+        #filter out tics not in range (there can be one or two)
+        tics = filter(lambda x: crange[0] <= x <= crange[1], tics)
+    else:
+        #tics = chart_calculate_tics_for_range(crange, False)
+        lower = int(crange[0])
+        upper = int(crange[1]) + 1
+        current = lower
+        while current < upper:
+            for i in range(1, 10):
+                tics.append(i * math.pow(10, current))
+            current += 1
+        f = lambda x: math.pow(10, crange[0]) <= x <= math.pow(10, crange[1])
+        tics = filter(f, tics)
+    return tics
 
 
-class Legend(ChartObject):
-    """
-    This class represents a legend on a line chart.
+class LineChart(chart.Chart):
     
-    Properties
-    ==========
-    The Legend class inherits properties from chart_object.ChartObject.
-    Additional properties:
-     - position (the legend's position on the chart, type: a corner
-       position constant).
-       
-    Signals
-    =======
-    The Legend class inherits signals from chart_object.ChartObject.    
-    """
+    __gsignals__ = {"point-clicked": (gobject.SIGNAL_RUN_LAST,
+                                        gobject.TYPE_NONE,
+                                        (gobject.TYPE_PYOBJECT,
+                                        gobject.TYPE_PYOBJECT)),
+                    "point-hovered": (gobject.SIGNAL_RUN_LAST,
+                                        gobject.TYPE_NONE,
+                                        (gobject.TYPE_PYOBJECT,
+                                        gobject.TYPE_PYOBJECT)),
+                    "selection-changed": (gobject.SIGNAL_RUN_LAST,
+                                        gobject.TYPE_NONE,
+                                        (gobject.TYPE_PYOBJECT, ))}
+                                        
+    __gproperties__ = {"mouse-over-effect": (gobject.TYPE_BOOLEAN,
+                                            "set whether to show datapoint \
+                                            mouse over effect",
+                                            "Set whether to show datapoint \
+                                            mouse over effect.",
+                                            True, gobject.PARAM_READWRITE),
+                        "extend-xrange": (gobject.TYPE_PYOBJECT,
+                                            "set how to extend the xrange",
+                                            "Set how to extend the xrange.",
+                                            gobject.PARAM_READWRITE),
+                        "extend-yrange": (gobject.TYPE_PYOBJECT,
+                                            "set how to extend the yrange",
+                                            "Set how to extend the yrange.",
+                                            gobject.PARAM_READWRITE),
+                        "color-set": (gobject.TYPE_PYOBJECT,
+                                        "set the color set",
+                                        "Set the color set for the chart.",
+                                        gobject.PARAM_READWRITE),
+                        "selection-mode": (gobject.TYPE_BOOLEAN,
+                                            "set whether to enable selection",
+                                            "Set whether to enable selection.",
+                                            False, gobject.PARAM_READWRITE)}
     
-    __gproperties__ = {"position": (gobject.TYPE_INT, "legend position",
-                                    "Position of the legend.", 8, 11, 8,
-                                    gobject.PARAM_READWRITE)}
+    _xrange1 = RANGE_AUTO
+    _yrange1 = RANGE_AUTO
+    _xrange2 = RANGE_AUTO
+    _yrange2 = RANGE_AUTO
+    _mouse_over_effect = True
+    _extend_xrange = (0, 0)
+    _extend_yrange = (0, 0)
+    
+    _graphs_xaxis1 = []
+    _graphs_xaxis2 = []
+    _graphs_yaxis1 = []
+    _graphs_yaxis2 = []
+    _peak_markers = {}
+    
+    _color_set = TangoColors()
     
     def __init__(self):
-        ChartObject.__init__(self)
-        self._show = False
-        self._position = POSITION_TOP_RIGHT
+        super(LineChart, self).__init__()
+        #public attributes
+        self.xaxis = XAxis()
+        self.xaxis2 = XAxis()
+        self.yaxis = YAxis()
+        self.yaxis2 = YAxis()
+        self.grid = Grid()
+        self.key = LineChartKey()
+        #private attributes
+        self._graphs = []
+        self._selection_mode = False
+        self._selection_start = None
+        self._selection_end = None
+        self._selecting = False
+        self._data_rect = None
+        
+        #init some properties
+        self.yaxis2.set_visible(True)
+        
+        #connect to "appearance-changed" signals
+        self.xaxis.connect("appearance-changed", self._cb_appearance_changed)
+        self.yaxis.connect("appearance-changed", self._cb_appearance_changed)
+        self.grid.connect("appearance-changed", self._cb_appearance_changed)
+        self.key.connect("appearance-changed", self._cb_appearance_changed)
         
     def do_get_property(self, property):
-        if property.name == "visible":
-            return self._show
-        elif property.name == "antialias":
-            return self._antialias
-        elif property.name == "position":
-            return self._position
+        if property.name == "mouse-over-effect":
+            return self._mouse_over_effect
+        elif property.name == "extend-xrange":
+            return self._extend_xrange
+        elif property.name == "extend-yrange":
+            return self._extend_yrange
+        elif property.name == "color-set":
+            return self._color_set
+        elif property.name == "selection-mode":
+            return self._selection_mode
         else:
-            raise AttributeError, "Property %s does not exist." % property.name
-
+            return super(LineChart, self).do_get_property(property)
+            
     def do_set_property(self, property, value):
-        if property.name == "visible":
-            self._show = value
-        elif property.name == "antialias":
-            self._antialias = value
-        elif property.name == "position":
-            self._position = value
+        if property.name == "mouse-over-effect":
+            self._mouse_over_effect = value
+        elif property.name == "extend-xrange":
+            self._extend_xrange = value
+        elif property.name == "extend-yrange":
+            self._extend_yrange = value
+        elif property.name == "color-set":
+            self._color_set = value
+        elif property.name == "selection-mode":
+            self._selection_mode = value
         else:
-            raise AttributeError, "Property %s does not exist." % property.name
+            super(LineChart, self).do_set_property(property, value)
         
-    def _do_draw(self, context, rect, graphs):
+    def _cb_button_pressed(self, widget, event):
+        if self._selection_mode:
+            rx = self._data_rect.x
+            ry = self._data_rect.y
+            rw = float(self._data_rect.width)
+            rh = float(self._data_rect.height)
+            self._selection_start = ((event.x - rx) / rw,
+                                        (event.y - ry) / rh)
+            self._selecting = True
+        else:
+            data = chart.get_sensitive_areas(event.x, event.y)
+            for graph, point in data:
+                self.emit("point-clicked", graph, point)
+        super(LineChart, self)._cb_button_pressed(widget, event)
+        
+    def _cb_button_released(self, widget, event):
+        if self._selection_mode:
+            self._selecting = False
+            data = (self._selection_start[0], self._selection_start[1],
+                    self._selection_end[0], self._selection_end[1])
+            self.emit("selection-changed", data)
+        super(LineChart, self)._cb_button_released(widget, event)
+    
+    def _cb_motion_notify(self, widget, event):
+        if self._selection_mode:
+            if self._selection_start != None:
+                if self._selecting:
+                    rx = self._data_rect.x
+                    ry = self._data_rect.y
+                    rw = float(self._data_rect.width)
+                    rh = float(self._data_rect.height)
+                    self._selection_end = ((event.x - rx) / rw,
+                                            (event.y - ry) / rh)
+                    self.queue_draw()
+        else:
+            if not self._mouse_over_effect: return
+            data = chart.get_sensitive_areas(event.x, event.y)
+            change = False
+            for graph in self._graphs:
+                if graph.get_highlighted() != []:
+                    change = True
+                graph.set_highlighted([])
+            for graph, point in data:
+                graph.add_highlighted(point)
+                self.emit("point-hovered", graph, point)
+            if data != [] or change:
+                self.queue_draw()
+        
+    def draw(self, context):
+        """
+        Draw the widget. This method is called automatically. Don't call it
+        yourself. If you want to force a redrawing of the widget, call
+        the queue_draw() method.
+        
+        @type context: cairo.Context
+        @param context: The context to draw on.
+        """
+        label.begin_drawing()
+        
+        rect = self.get_allocation()
+        #transform rect to context coordinates
+        rect = gtk.gdk.Rectangle(0, 0, rect.width, rect.height)
         context.set_line_width(1)
-        width = 0.2 * rect.width
-        label_width = width - 12 - 20
+                                    
+        rect = self._draw_basics(context, rect)
+        
+        extend_x = self._extend_xrange
+        extend_y = self._extend_yrange
+        
+        if len(self._peak_markers) > 0:
+            #extend the y range 10% at the top to show peak marker
+            extend_y = extend_y[0], extend_y[1] + 0.1
+        
+        logscale1 = (self.xaxis.get_property("logscale"),
+                    self.yaxis.get_property("logscale"))
+        logscale2 = (self.xaxis2.get_property("logscale"),
+                    self.yaxis2.get_property("logscale"))
+        
+        #calculate the ranges for all four possible combinations of axis
+        #affinity
+        ranges = chart_calculate_ranges(self._xrange1, self._yrange1,
+                                        self._graphs_xaxis1,
+                                        self._graphs_yaxis1, extend_x,
+                                        extend_y, (logscale1[0], logscale1[1]))
+        calculated_xrange1a, calculated_yrange1a = ranges
+        ranges = chart_calculate_ranges(self._xrange1, self._yrange2,
+                                        self._graphs_xaxis1,
+                                        self._graphs_yaxis2, extend_x,
+                                        extend_y, (logscale1[0], logscale2[1]))
+        calculated_xrange1b, calculated_yrange2a = ranges
+        ranges = chart_calculate_ranges(self._xrange2, self._yrange1,
+                                        self._graphs_xaxis2,
+                                        self._graphs_yaxis1, extend_x,
+                                        extend_y, (logscale2[0], logscale1[1]))
+        calculated_xrange2a, calculated_yrange1b = ranges
+        ranges = chart_calculate_ranges(self._xrange2, self._yrange2,
+                                        self._graphs_xaxis2,
+                                        self._graphs_yaxis2, extend_x,
+                                        extend_y, (logscale2[0], logscale2[1]))
+        calculated_xrange2b, calculated_yrange2b = ranges
+        
+        #find out the actual ranges from the eight ranges calculated above
+        calculated_xrange1 = min(calculated_xrange1a[0],
+                                    calculated_xrange1b[0]), \
+                                    max(calculated_xrange1a[1],
+                                    calculated_xrange1b[1])
+        calculated_yrange1 = min(calculated_yrange1a[0],
+                                    calculated_yrange1b[0]), \
+                                    max(calculated_yrange1a[1],
+                                    calculated_yrange1b[1])
+        calculated_xrange2 = min(calculated_xrange2a[0], 
+                                    calculated_xrange2b[0]), \
+                                    max(calculated_xrange2a[1],
+                                    calculated_xrange2b[1])
+        calculated_yrange2 = min(calculated_yrange2a[0],
+                                    calculated_yrange2b[0]), \
+                                    max(calculated_yrange2a[1],
+                                    calculated_yrange2b[1])
+        
+        #calculate tic positions for all axes
+        xtics1 = chart_calculate_tics_for_range(calculated_xrange1,
+                                                logscale1[0])
+        ytics1 = chart_calculate_tics_for_range(calculated_yrange1,
+                                                logscale1[1])
+        xtics2 = chart_calculate_tics_for_range(calculated_xrange2,
+                                                logscale2[0])
+        ytics2 = chart_calculate_tics_for_range(calculated_yrange2,
+                                                logscale2[1])
+                                                
+        #draw axes
+        rect, xtics1_drawn_at, ytics1_drawn_at, xtics2_drawn_at, \
+        ytics2_drawn_at = self._draw_axes(context, rect, calculated_xrange1,
+                                            calculated_yrange1,
+                                            calculated_xrange2,
+                                            calculated_yrange2, xtics1, ytics1,
+                                            xtics2, ytics2)
+        
+        #restrict drawing area
+        context.save()
+        context.rectangle(rect.x + 1, rect.y + 1, rect.width - 1,
+                            rect.height - 1)
+        context.clip()
+        
+        self._draw_grid(context, rect, xtics1_drawn_at, ytics1_drawn_at)
+        
+        self._draw_graphs(context, rect, calculated_xrange1,
+                            calculated_yrange1, calculated_xrange2,
+                            calculated_yrange2)
+        
+        self._draw_peak_markers(context, rect, calculated_xrange1,
+                                calculated_yrange1, calculated_xrange2,
+                                calculated_yrange2, logscale1, logscale2)
+        
+        #draw key
+        context.restore()
+        self.key.draw(context, rect, self._graphs, self._color_set)
+        
+        self._draw_selection(context, rect)
+        
+        label.finish_drawing()
+        self._data_rect = rect
+        
+    def _draw_basics(self, context, rect):
+        """
+        Draw basic things that every plot has (background, title, ...).
+        
+        @type context: cairo.Context
+        @param context: The context to draw on.
+        @type rect: gtk.gdk.Rectangle
+        @param rect: A rectangle representing the charts area.
+        """
+        self.background.draw(context, rect)
+        self.title.draw(context, rect, self._padding)
+        
+        #calculate the rectangle that's available for drawing the chart
+        title_height = self.title.get_real_dimensions()[1]
+        rect_height = int(rect.height - 3 * self._padding - title_height)
+        rect_width = int(rect.width - 2 * self._padding)
+        rect_x = int(rect.x + self._padding)
+        rect_y = int(rect.y + title_height + 2 * self._padding)
+        return gtk.gdk.Rectangle(rect_x, rect_y, rect_width, rect_height)
+        
+    def _draw_axes(self, context, rect, calculated_xrange1, calculated_yrange1,
+                    calculated_xrange2, calculated_yrange2, xtics1, ytics1,
+                    xtics2, ytics2):
+        rect = self.xaxis.make_rect_label_offset(context, rect, xtics1)
+        rect = self.yaxis.make_rect_label_offset(context, rect, ytics1)
+        rect = self.xaxis2.make_rect_label_offset(context, rect, xtics2, True)
+        rect = self.yaxis2.make_rect_label_offset(context, rect, ytics2, True)
+        
+        if self.xaxis2.get_visible() and self._graphs_xaxis2 != []:
+            self.xaxis.set_property("show-other-side", False)
+        if self.yaxis2.get_visible() and self._graphs_yaxis2 != []:
+            self.yaxis.set_property("show-other-side", False)
+        
+        xtics1_drawn_at = self.xaxis.draw(context, rect, calculated_xrange1,
+                                            xtics1)
+        ytics1_drawn_at = self.yaxis.draw(context, rect, calculated_yrange1,
+                                            ytics1)
+        
+        xtics2_drawn_at = []
+        ytics2_drawn_at = []
+        if self._graphs_xaxis2 != []:
+            xtics2_drawn_at = self.xaxis2.draw(context, rect,
+                                                calculated_xrange2, xtics2,
+                                                True)
+        if self._graphs_yaxis2 != []:
+            ytics2_drawn_at = self.yaxis2.draw(context, rect,
+                                                calculated_yrange2, ytics2,
+                                                True)
+        
+        return rect, xtics1_drawn_at, ytics1_drawn_at, xtics2_drawn_at, \
+                ytics2_drawn_at
+        
+    def _draw_grid(self, context, rect, xtics, ytics):
+        self.grid.draw(context, rect, xtics, ytics, self.xaxis, self.yaxis)
+        
+    def _draw_graphs(self, context, rect, calculated_xrange1,
+                        calculated_yrange1, calculated_xrange2,
+                        calculated_yrange2):
+        logscale1 = (self.xaxis.get_property("logscale"),
+                    self.yaxis.get_property("logscale"))
+        logscale2 = (self.xaxis2.get_property("logscale"),
+                    self.yaxis2.get_property("logscale"))
+        chart.init_sensitive_areas()
+        self._color_set.reset()
+        for i, graph in enumerate(self._graphs):
+            gc = graph.get_property("color")
+            if gc == COLOR_AUTO:
+                gc = self._color_set.get_color()
+            
+            logx = False
+            logy = False
+            
+            if graph in self._graphs_xaxis1:
+                calculated_xrange = calculated_xrange1
+                logx = logscale1[0]
+            elif graph in self._graphs_xaxis2:
+                calculated_xrange = calculated_xrange2
+                logx = logscale2[0]
+            if graph in self._graphs_yaxis1:
+                calculated_yrange = calculated_yrange1
+                logy = logscale1[1]
+            elif graph in self._graphs_yaxis2:
+                calculated_yrange = calculated_yrange2
+                logy = logscale2[1]
+            graph.draw(context, rect, calculated_xrange, calculated_yrange, gc,
+                        (logx, logy))
+            
+    def _draw_peak_markers(self, context, rect, xrange1, yrange1, xrange2, yrange2, logscale1, logscale2):
+        for id, marker in self._peak_markers.iteritems():
+            n_xaxis = marker.get_property("xaxis")
+            n_yaxis = marker.get_property("yaxis")
+            
+            logscale = [False, False]
+            
+            if n_xaxis == 1:
+                xrange = xrange1
+                logscale[0] = logscale1[0]
+            else:
+                xrange = xrange2
+                logscale[0] = logscale2[0]
+            
+            if n_yaxis == 1:
+                yrange = yrange1
+                logscale[1] = logscale1[1]
+            else:
+                yrange = yrange2
+                logscale[1] = logscale2[1]
+                
+            marker.draw(context, rect, xrange, yrange, logscale)
+            
+    def _draw_selection(self, context, rect):
+        sc = gtk.Label("").get_style().bg[gtk.STATE_SELECTED]
+        c = basics.color_gdk_to_cairo(sc)
+        ca = (c[0], c[1], c[2], 0.3)
+        if self._selection_start != None and self._selection_end != None:
+            x = min(max(0, self._selection_start[0]), 1)
+            y = min(max(0, self._selection_start[1]), 1)
+            self._selection_start = (x, y)
+            
+            x = min(max(0, self._selection_end[0]), 1)
+            y = min(max(0, self._selection_end[1]), 1)
+            self._selection_end = (x, y)
+            
+            context.set_source_rgba(*ca)
+            px, py = self._selection_start
+            pw = self._selection_end[0] - px
+            ph = self._selection_end[1] - py
+            x = rect.x + rect.width * px
+            y = rect.y + rect.height * py
+            w = rect.width * pw
+            h = rect.height * ph
+            context.rectangle(x, y, w, h)
+            context.fill_preserve()
+            context.set_source_rgb(*c)
+            context.stroke()
+        
+    def add_graph(self, graph, xaxis=1, yaxis=1):
+        """
+        Add a graph to the LineChart widget.
+        The parameters xaxis and yaxis specify which axes should be used
+        to scale and display the data (axis 1 or 2).
+        
+        @type graph: line_chart.Graph
+        @param graph: the graph to add
+        @type xaxis: int (1 or 2)
+        @type yaxis: int (1 or 2)
+        """
+        self._graphs.append(graph)
+        
+        if xaxis == 1:
+            self._graphs_xaxis1.append(graph)
+        else:
+            self._graphs_xaxis2.append(graph)
+        if yaxis == 1:
+            self._graphs_yaxis1.append(graph)
+        else:
+            self._graphs_yaxis2.append(graph)
+            
+        self.queue_draw()
+        
+    def add_peak_marker(self, id, marker):
+        self._peak_markers[id] = marker
+        self.queue_draw()
+        
+    def remove_peak_marker(self, id):
+        del self._peak_markers[id]
+        self.queue_draw()
+        
+    def get_peak_marker(self, id):
+        return self._peak_markers[id]
+        
+    def get_peak_markers(self):
+        return self._peak_markers
+        
+    def clear(self, peak_markers=True):
+        self._graphs = []
+        self._graphs_xaxis1 = []
+        self._graphs_xaxis2 = []
+        self._graphs_yaxis1 = []
+        self._graphs_yaxis2 = []
+        if peak_markers:
+            self._peak_markers = {}
+        self.queue_draw()
+        
+    def get_color_set(self):
+        """
+        Returns the currently used color set.
+        
+        @return: pygtk_chart.color.ColorSet
+        """
+        return self.get_property("color-set")
+        
+    def set_color_set(self, color_set):
+        """
+        Set a new color set to use. Available color sets are:
+        
+         - pygtk_chart.color.TangoColors (default)
+         - pygtk_chart.color.SimpleColors
+         - pygtk_chart.color.GrayScaleColors
+        
+        @param color_set: the new color set
+        @type color_set: a pygtk_chart.color.ColorSet instance
+        """
+        self.set_property("color-set", color_set)
+        self.queue_draw()
+        
+    def get_mouse_over_effect(self):
+        """
+        Returns True if a mouse over effect is shown at datapoints.
+        
+        (getter method for property 'mouse-over-effect', see setter
+        method for details)
+        
+        @return: boolean
+        """
+        return self.get_property("mouse-over-effect")
+        
+    def set_mouse_over_effect(self, mouseover):
+        """
+        Set whether to show mouse over effect at datapoints.
+        
+        This is the setter method for the property 'mouse-over-effect'.
+        Property type: gobject.TYPE_BOOLEAN
+        Property default value: True
+        
+        @type mouseover: boolean
+        """
+        self.set_property("mouse-over-effect", mouseover)
+        
+    def set_peak_marker(self, pos):
+        """
+        Add a peak marker (small black triangle at pos=(x,y)). A chart can
+        only have one peak marker.
+        Set pos=None to remove the marker.
+        
+        @param pos: the marker position
+        @type pos: pair of float
+        """
+        self._peak_marker = pos
+        self.queue_draw()
+        
+    def get_extend_xrange(self):
+        """
+        Returns a pair of floating point numbers that describe the extension
+        of the xrange (see setter function for details).
+        
+        @return: pair of float
+        """
+        return self.get_property("extend-xrange")
+        
+    def set_extend_xrange(self, extend):
+        """
+        Set how to extend the xrange. extend has to be a pair of float values
+        (a, b). If the original xrange is [xmin, xmax] it will be set to
+        [xmin * (1 + a), xmax * (1 + b)] on drawing.
+        
+        @param extend: extend parameters
+        @type extend: pair of float
+        """
+        self.set_property("extend-xrange", extend)
+        self.queue_draw()
+        
+    def get_extend_yrange(self):
+        """
+        Returns a pair of floating point numbers that describe the extension
+        of the yrange (see setter function for details).
+        
+        @return: pair of float
+        """
+        return self.get_property("extend-yrange")
+        
+    def set_extend_yrange(self, extend):
+        """
+        Set how to extend the yrange. extend has to be a pair of float values
+        (a, b). If the original yrange is [ymin, ymax] it will be set to
+        [ymin * (1 + a), ymax * (1 + b)] on drawing.
+        
+        @param extend: extend parameters
+        @type extend: pair of float
+        """
+        self.set_property("extend-yrange", extend)
+        self.queue_draw()
+        
+    def get_selection_mode(self):
+        """
+        Returns True if selection mode is enabled.
+        
+        @return: boolean
+        """
+        return self.get_property("selection_mode")
+        
+    def set_selection_mode(self, enable):
+        """
+        Set whether selection mode should be enabled. If enabled, the
+        user can select a rectangle in the chart.
+        The 'selection-changed' signal is emitted if selection is
+        changed.
+        
+        @param enable: set whether to enable selection mode
+        @type enable: boolean
+        """
+        self.set_property("selection_mode", enable)
+        
 
-        x = rect.width - width
-        y = 16
+class Axis(ChartObject):
+    
+    __gproperties__ = {"label": (gobject.TYPE_STRING,
+                                    "axis label",
+                                    "The label for the axis.",
+                                    "", gobject.PARAM_READWRITE),
+                        "show-label": (gobject.TYPE_BOOLEAN,
+                                        "set whether to show the axis label",
+                                        "Set whether to show the axis label.",
+                                        True, gobject.PARAM_READWRITE),
+                        "show-tics": (gobject.TYPE_BOOLEAN,
+                                        "set whether to show tics at the axis",
+                                        "Set whether to show tics at the axis.",
+                                        True, gobject.PARAM_READWRITE),
+                        "show-tic-labels": (gobject.TYPE_BOOLEAN,
+                                        "set whether to show labels at the \
+                                        tics",
+                                        "Set whether to show labels at the \
+                                        tics.",
+                                        True, gobject.PARAM_READWRITE),
+                        "tic-size": (gobject.TYPE_INT, "the tic size",
+                                        "Size of the axis' tics in px.",
+                                        1, 100, 3,
+                                        gobject.PARAM_READWRITE),
+                        "tic-format": (gobject.TYPE_PYOBJECT,
+                                        "funtion to format the tic label",
+                                        "The funtion to use to format the tic \
+                                        label.",
+                                        gobject.PARAM_READWRITE),
+                        "show-other-side": (gobject.TYPE_BOOLEAN,
+                                            "also draw axis on the opposite \
+                                            side",
+                                            "Set whether to also draw axis on \
+                                            the opposite side.",
+                                            True, gobject.PARAM_READWRITE),
+                        "logscale": (gobject.TYPE_BOOLEAN, "set logscale",
+                                        "Set whether to use a logarithmic \
+                                        scale on this axis.",
+                                        False, gobject.PARAM_READWRITE)}
+                                    
+    _label = ""
+    _show_label = True
+    _label_spacing = 3
+    _show_tics = True
+    _show_tic_labels = True
+    _tic_label_format = lambda self, x: "%.4g" % x
+    _tics_size = 3
+    _min_tic_spacing = 35 
+    _offset_by_tic_label = 0
+    _show_other_side = True
+    _logscale = False
+    
+    def __init__(self):
+        super(Axis, self).__init__()
+        self.set_property("antialias", False)
         
-        total_height = 0
-        total_width = 0
-        for id, graph in graphs.iteritems():
-            if not graph.get_visible(): continue
-            graph_label = label.Label((x + (width - label_width), y), graph.get_title(), anchor=label.ANCHOR_TOP_LEFT)
-            graph_label.set_max_width(label_width)
-            
-            rwidth, rheight = graph_label.get_calculated_dimensions(context, rect)
-            
-            total_height += rheight + 6
-            total_width = max(total_width, rwidth)
-            
-        total_width += 18 + 20
-        if self._position == POSITION_TOP_RIGHT:
-            x = rect.width - total_width - 16
-            y = 16
-        elif self._position == POSITION_BOTTOM_RIGHT:
-            x = rect.width - total_width - 16
-            y = rect.height - 16 - total_height
-        elif self._position == POSITION_BOTTOM_LEFT:
-            x = 16
-            y = rect.height - 16 - total_height
-        elif self._position == POSITION_TOP_LEFT:
-            x = 16
-            y = 16
+    def do_get_property(self, property):
+        if property.name == "label":
+            return self._label
+        elif property.name == "show-label":
+            return self._show_label
+        elif property.name == "show-tics":
+            return self._show_tics
+        elif property.name == "show-tic-labels":
+            return self._show_tic_labels
+        elif property.name == "tic-size":
+            return self._tics_size
+        elif property.name == "tic-format":
+            return self._tic_label_format
+        elif property.name == "show-other-side":
+            return self._show_other_side
+        elif property.name == "logscale":
+            return self._logscale
+        else:
+            return super(Axis, self).do_get_property(property)
         
-        context.set_antialias(cairo.ANTIALIAS_NONE)
-        context.set_source_rgb(1, 1, 1)
-        context.rectangle(x, y - 3, total_width, total_height)
-        context.fill_preserve()
+    def do_set_property(self, property, value):
+        if property.name == "label":
+            self._label = value
+        elif property.name == "show-label":
+            self._show_label = value
+        elif property.name == "show-tics":
+            self._show_tics = value
+        elif property.name == "show-tic-labels":
+            self._show_tic_labels = value
+        elif property.name == "tic-size":
+            self._tics_size = value
+        elif property.name == "tic-format":
+            self._tic_label_format = value
+        elif property.name == "show-other-side":
+            self._show_other_side = value
+        elif property.name == "logscale":
+            self._logscale = value
+        else:
+            super(Axis, self).do_set_property(property, value)
+            
+    def get_label(self):
+        """
+        Returns the current label of the axis.
+        
+        (getter method for property 'label', see setter method for
+        details)
+        
+        @return: string
+        """
+        return self.get_property("label")
+            
+    def set_label(self, label):
+        """
+        Set the label of the axis.
+        
+        This is the setter method for the property 'label'.
+        Property type: gobject.TYPE_STRING
+        Property default value: ""
+        
+        @param label: new label
+        @type label: string
+        """
+        self.set_property("label", label)
+        
+    def get_logscale(self):
+        """
+        Returns True if the axis uses logarithmic scale.
+        
+        @return: boolean.
+        """
+        return self.get_property("logscale")
+        
+    def set_logscale(self, logscale):
+        """
+        Set whether the axis should use a lograithmic scale.
+        
+        @type param: boolean.
+        """
+        self.set_property("logscale", logscale)
+        self.emit("appearance-changed")
+        
+    def get_show_label(self):
+        """
+        Return True if the axis' label is shown.
+        
+        (getter method for property 'show-label', see setter method for
+        details)
+        
+        @return: boolean
+        """
+        return self.get_property("show-label")
+        
+    def set_show_label(self, show):
+        """
+        Set whether to show the axis' label.
+        
+        This is the setter method for the property 'show-label'.
+        Property type: gobject.TYPE_BOOLEAN
+        Property default value: True
+        
+        @type show: boolean
+        """
+        self.set_property("show-label", show)
+        
+    def get_show_tics(self):
+        """
+        Return True tics are shown.
+        
+        (getter method for property 'show-tics', see setter method for
+        details)
+        
+        @return: boolean
+        """
+        return self.get_property("show-tics")
+        
+    def set_show_tics(self, show):
+        """
+        Set whether to show tics at the axis.
+        
+        This is the setter method for the property 'show-tics'.
+        Property type: gobject.TYPE_BOOLEAN
+        Property default value: True
+        
+        @type show: boolean
+        """
+        self.set_property("show-tics", show)
+        
+    def get_show_tic_labels(self):
+        """
+        Return True if labels are shown at the axis' tics.
+        
+        (getter method for property 'show-tic-labels', see setter method
+        for details)
+        
+        @return: boolean
+        """
+        return self.get_property("show-tic-labels")
+        
+    def set_show_tic_labels(self, show):
+        """
+        Set whether to show labels at the axis' tics. If the property
+        'show-tics' is False, labels are not shown regardless of what
+        value 'show-tic-labels' has.
+        
+        This is the setter method for the property 'show-tic-labels'.
+        Property type: gobject.TYPE_BOOLEAN
+        Property default value: True
+        
+        @type show: boolean
+        """
+        self.set_property("show-tic-labels", show)
+        
+    def get_tic_size(self):
+        """
+        Returns the size of the axis' tics in pixels.
+        
+        (getter method for property 'tic-size', see setter method for
+        details)
+        
+        @return: int
+        """
+        return self.get_property("tic-size")
+        
+    def set_tic_size(self, size):
+        """
+        Set the size of the axis' tics in pixels.
+        
+        This is the setter method for the property 'tic-size'.
+        Property type: gobject.TYPE_INT
+        Property minimum value: 1
+        Property maximum value: 100
+        Property default value: 3
+        
+        @param size: new size for the tics
+        @type size: interger
+        """
+        self.set_property("tic-size", size)
+        
+    def get_tic_format(self):
+        """
+        Returns the function that is used to format the tic labels.
+        
+        (getter method for property 'tic-format', see setter method for
+        details)
+        
+        @return: function
+        """
+        return self.get_property("tic-format")
+        
+    def set_tic_format(self, func):
+        """
+        Set the function to format the tic labels. The function
+        'func' has to take a float as the only argument and should
+        return a string.
+        
+        This is the setter method for the property 'tic-format'.
+        Property type: gobject.TYPE_PYOBJECT
+        Property default value: str
+        
+        @param func: new label formating function
+        @type func: function
+        """
+        self.set_property("tic-format", func)
+        
+    def get_show_other_side(self):
+        """
+        Returns True if axis is also drawn at the opposite side.
+        
+        (getter method for property 'show-other-side', see setter method
+        for details)
+        
+        @return: boolean
+        """
+        return self.get_property("show-other-side")
+        
+    def set_show_other_side(self, show):
+        """
+        Set whether the axis should also be drawn at the opposite side.
+        
+        This is the setter method for the property 'show-other-side'.
+        Property type: gobject.TYPE_BOOLEAN
+        Property default value: True
+        
+        @type show: boolean
+        """
+        self.set_property("show-other-side", show)
+
+
+class XAxis(Axis):
+    
+    def __init__(self):
+        super(XAxis, self).__init__()
+        self._label = "x"
+    
+    def _do_draw(self, context, rect, calculated_xrange, tics, top=False):
+        self._draw_label(context, rect, top)
+        context.set_line_width(1)
         context.set_source_rgb(0, 0, 0)
+        if not top:
+            context.move_to(rect.x, rect.y + rect.height + 0.5)
+        else:
+            context.move_to(rect.x, rect.y + 0.5)
+        context.rel_line_to(rect.width, 0)
         context.stroke()
-        context.set_antialias(cairo.ANTIALIAS_DEFAULT)
         
-        for id, graph in graphs.iteritems():
+        if self._show_other_side and not top:
+            context.move_to(rect.x, rect.y + 0.5)
+            context.rel_line_to(rect.width, 0)
+            context.stroke()
+        
+        tics_drawn_at = self._draw_tics(context, rect, calculated_xrange, tics,
+                                        top)
+        self._draw_tic_labels(context, rect, tics_drawn_at, top)
+        return tics_drawn_at
+        
+    def _draw_tics(self, context, rect, xrange, tics, top):
+        tics_drawn_at = []
+        if self._show_tics:
+            ppu = float(rect.width) / abs(xrange[0] - xrange[1])
+            if not top:
+                y = rect.y + rect.height
+            else:
+                y = rect.y + self._tics_size
+            last_pos = -100
+            if not self._logscale:
+                for tic in tics:
+                    x = rect.x + ppu * (tic - xrange[0])
+                    if abs(x - last_pos) >= self._min_tic_spacing:
+                        context.move_to(x, y)
+                        context.rel_line_to(0, -self._tics_size)
+                        context.stroke()
+                        
+                        if self._show_other_side:
+                            context.move_to(x, rect.y)
+                            context.rel_line_to(0, self._tics_size)
+                            context.stroke()
+                        
+                        last_pos = x
+                        tics_drawn_at.append((tic, x))
+            else:
+                for tic in tics:
+                    x = rect.x + ppu * (math.log10(tic) - xrange[0])
+                    if abs(x - last_pos) >= self._min_tic_spacing:
+                        context.move_to(x, y)
+                        context.rel_line_to(0, -self._tics_size)
+                        context.stroke()
+                        
+                        if self._show_other_side:
+                            context.move_to(x, rect.y)
+                            context.rel_line_to(0, self._tics_size)
+                            context.stroke()
+                        
+                        last_pos = x
+                        tics_drawn_at.append((tic, x))
+        return tics_drawn_at
+        
+    def _draw_label(self, context, rect, top):
+        if self._label and self._show_label:
+            if not top:
+                pos = rect.x + rect.width / 2, \
+                        rect.y + rect.height + self._offset_by_tic_label + \
+                        self._label_spacing
+                anc = label.ANCHOR_TOP_CENTER
+            else:
+                pos = rect.x + rect.width / 2, \
+                        rect.y - self._offset_by_tic_label - self._label_spacing
+                anc = label.ANCHOR_BOTTOM_CENTER
+            label_object = label.Label(pos, self._label, anchor=anc)
+            label_object.set_use_markup(True)
+            label_object.draw(context, rect)
+            
+    def _draw_tic_labels(self, context, rect, tics_drawn_at, top):
+        if self._show_tics and self._show_tic_labels:
+            if not top:
+                posy = rect.y + rect.height + self._label_spacing
+                anc = label.ANCHOR_TOP_CENTER
+            else:
+                posy = rect.y - self._label_spacing
+                anc = label.ANCHOR_BOTTOM_CENTER
+            for x, posx in tics_drawn_at:
+                pos = (posx, posy)
+                label_object = label.Label(pos, self._tic_label_format(x),
+                                            anchor=anc)
+                label_object.set_fixed(True)
+                label_object.draw(context, rect)
+                
+    def make_rect_label_offset(self, context, rect, tics, top=False):
+        offset = 0
+        if self._label and self._show_label:
+            if not top:
+                pos = rect.x + rect.width / 2, rect.y + rect.height
+            else:
+                pos = rect.x + rect.width / 2, rect.y
+            label_object = label.Label(pos, self._label,
+                                        anchor=label.ANCHOR_TOP_CENTER)
+            label_object.set_max_width(rect.width)
+            label_object.set_use_markup(True)
+            w, h = label_object.get_calculated_dimensions(context, rect)
+            offset = int(h)
+        if self._show_tics and self._show_tic_labels:
+            label_object = label.Label((0, 0), self._tic_label_format(tics[0]),
+                                        anchor=label.ANCHOR_TOP_LEFT)
+            w, h = label_object.get_calculated_dimensions(context, rect)
+            offset += int(h)
+            self._offset_by_tic_label = int(h) + self._label_spacing
+        rect = gtk.gdk.Rectangle(rect.x, rect.y, rect.width,
+                                    rect.height - offset)
+        return rect
+    
+    
+    
+class YAxis(Axis):
+    
+    def __init__(self):
+        super(YAxis, self).__init__()
+        self._label = "y"
+    
+    def _do_draw(self, context, rect, calculated_yrange, tics, right=False):
+        self._draw_label(context, rect, right)
+        context.set_line_width(1)
+        context.set_source_rgb(0, 0, 0)
+        if not right:
+            context.move_to(rect.x + 0.5, rect.y)
+        else:
+            context.move_to(rect.x + rect.width + 0.5, rect.y)
+        context.rel_line_to(0, rect.height)
+        context.stroke()
+        
+        if self._show_other_side and not right:
+            context.move_to(rect.x + rect.width + 0.5, rect.y)
+            context.rel_line_to(0, rect.height)
+            context.stroke()
+        
+        tics_drawn_at = self._draw_tics(context, rect, calculated_yrange, tics,
+                                        right)
+        self._draw_tic_labels(context, rect, tics_drawn_at, right)
+        return tics_drawn_at
+        
+    def _draw_tics(self, context, rect, yrange, tics, right):
+        tics_drawn_at = []
+        if self._show_tics:
+            ppu = float(rect.height) / abs(yrange[0] - yrange[1])
+            if not right:
+                x = rect.x
+            else:
+                x = rect.x + rect.width - self._tics_size
+            last_pos = -100
+            if not self._logscale:
+                for tic in tics:
+                    y = rect.y + rect.height - ppu * (tic - yrange[0])
+                    if abs(y - last_pos) >= self._min_tic_spacing:
+                        context.move_to(x, y)
+                        context.rel_line_to(self._tics_size, 0)
+                        context.stroke()
+                        
+                        if self._show_other_side:
+                            context.move_to(x + rect.width, y)
+                            context.rel_line_to(-self._tics_size, 0)
+                            context.stroke()
+                        
+                        last_pos = y
+                        tics_drawn_at.append((tic, y))
+            else:
+                for tic in tics:
+                    y = rect.y + rect.height - ppu * (math.log10(tic) - \
+                                                        yrange[0])
+                    if abs(y - last_pos) >= 10:
+                        context.move_to(x, y)
+                        context.rel_line_to(self._tics_size, 0)
+                        context.stroke()
+                        
+                        if self._show_other_side:
+                            context.move_to(x + rect.width, y)
+                            context.rel_line_to(-self._tics_size, 0)
+                            context.stroke()
+                        
+                        last_pos = y
+                        tics_drawn_at.append((tic, y))
+        return tics_drawn_at
+        
+    def _draw_label(self, context, rect, right):
+        if self._label and self._show_label:
+            if not right:
+                pos = rect.x - self._offset_by_tic_label - self._label_spacing,\
+                        rect.y + rect.height / 2
+                angle = 90
+            else:
+                pos = rect.x + rect.width + self._offset_by_tic_label + \
+                        self._label_spacing, rect.y + rect.height / 2
+                angle = 270
+                
+            label_object = label.Label(pos, self._label,
+                                        anchor=label.ANCHOR_BOTTOM_CENTER)
+            label_object.set_rotation(angle)
+            label_object.set_wrap(False)
+            label_object.set_use_markup(True)
+            label_object.set_max_width(rect.height)
+            label_object.draw(context, rect)
+            
+    def _draw_tic_labels(self, context, rect, tics_drawn_at, right):
+        if self._show_tics and self._show_tic_labels:
+            if not right:
+                posx = rect.x - self._label_spacing
+                anc = label.ANCHOR_RIGHT_CENTER
+            else:
+                posx = rect.x + rect.width + self._label_spacing
+                anc = label.ANCHOR_LEFT_CENTER
+            for y, posy in tics_drawn_at:
+                pos = (posx, posy)
+                label_object = label.Label(pos, self._tic_label_format(y),
+                                            anchor=anc)
+                label_object.set_fixed(True)
+                label_object.draw(context, rect)
+        
+    def make_rect_label_offset(self, context, rect, tics, right=False):
+        offset = 0
+        if self._label and self._show_label:
+            pos = rect.x, rect.y + rect.height / 2
+            label_object = label.Label(pos, self._label,
+                                        anchor=label.ANCHOR_TOP_CENTER)
+            label_object.set_rotation(90)
+            label_object.set_wrap(False)
+            label_object.set_use_markup(True)
+            label_object.set_max_width(rect.height)
+            w, h = label_object.get_calculated_dimensions(context, rect)
+            offset = int(w)
+        if self._show_tics and self._show_tic_labels:
+            m = ""
+            w = 0
+            for y in tics:
+                if len(self._tic_label_format(y)) > len(m):
+                    m = self._tic_label_format(y)
+                label_object = label.Label((0, 0), m,
+                                            anchor=label.ANCHOR_TOP_LEFT)
+                w, h = label_object.get_calculated_dimensions(context, rect)
+            self._offset_by_tic_label = int(w) + self._label_spacing
+            offset += int(w)
+        if not right:
+            rect = gtk.gdk.Rectangle(rect.x + offset, rect.y,
+                                        rect.width - offset, rect.height)
+        else:
+            rect = gtk.gdk.Rectangle(rect.x, rect.y, rect.width - offset,
+                                        rect.height)
+        return rect
+
+class Grid(ChartObject):
+    
+    __gproperties__ = {"show-horizontal-lines": (gobject.TYPE_BOOLEAN,
+                                                "show horizontal lines",
+                                                "Sets whether to show \
+                                                horizontal grid lines.",
+                                                True, gobject.PARAM_READWRITE),
+                        "show-vertical-lines": (gobject.TYPE_BOOLEAN,
+                                                "show vertical lines",
+                                                "Sets whether to show vertical \
+                                                grid lines.",
+                                                True, gobject.PARAM_READWRITE),
+                        "line-style-horizontal": (gobject.TYPE_INT,
+                                                    "horizontal line style",
+                                                    "Style of the horizontal \
+                                                    lines.",
+                                                    -1, 3, 0,
+                                                    gobject.PARAM_READWRITE),
+                        "line-style-vertical": (gobject.TYPE_INT,
+                                                    "vertical line style",
+                                                    "Style of the vertical \
+                                                    lines.",
+                                                    -1, 3, 0,
+                                                    gobject.PARAM_READWRITE),
+                        "color": (gobject.TYPE_PYOBJECT, "line color",
+                                    "Color of the grid lines.",
+                                    gobject.PARAM_READWRITE)}
+                                                        
+    _show_horizontal_lines = True
+    _show_vertical_lines = True
+    _line_style_horizontal = pygtk_chart.LINE_STYLE_DOTTED
+    _line_style_vertical = pygtk_chart.LINE_STYLE_DOTTED
+    _color = gtk.gdk.color_parse("#cccccc")
+    
+    def __init__(self):
+        super(Grid, self).__init__()
+        
+    def do_get_property(self, property):
+        if property.name == "show-horizontal-lines":
+            return self._show_horizontal_lines
+        elif property.name == "show-vertical-lines":
+            return self._show_vertical_lines
+        elif property.name == "line-style-horizontal":
+            return self._line_style_horizontal
+        elif property.name == "line-style-vertical":
+            return self._line_style_vertical
+        elif property.name == "color":
+            return self._color
+        else:
+            return super(Grid, self).do_get_property(property)
+            
+    def do_set_property(self, property, value):
+        if property.name == "show-horizontal-lines":
+            self._show_horizontal_lines = value
+        elif property.name == "show-vertical-lines":
+            self._show_vertical_lines = value
+        elif property.name == "line-style-horizontal":
+            self._line_style_horizontal = value
+        elif property.name == "line-style-vertical":
+            self._line_style_vertical = value
+        elif property.name == "color":
+            self._color = value
+        else:
+            super(Grid, self).do_set_property(property, value)
+        
+    def _do_draw(self, context, rect, xtics, ytics, xaxis, yaxis):
+        context.set_source_rgb(*color_gdk_to_cairo(self._color))
+        #draw vertical lines
+        if self._show_vertical_lines:
+            set_context_line_style(context, self._line_style_vertical)
+            for x, xpos in xtics:
+                if xaxis.get_show_other_side():
+                    context.move_to(xpos, rect.y + xaxis.get_tic_size())
+                    context.rel_line_to(0,
+                                        rect.height - 2 * xaxis.get_tic_size())
+                else:
+                    context.move_to(xpos, rect.y)
+                    context.rel_line_to(0, rect.height - xaxis.get_tic_size())
+                context.stroke()
+        #draw horizontal lines
+        if self._show_horizontal_lines:
+            set_context_line_style(context, self._line_style_horizontal)
+            for y, ypos in ytics:
+                context.move_to(rect.x + yaxis.get_tic_size(), ypos)
+                if yaxis.get_show_other_side():
+                    context.rel_line_to(rect.width - 2 * yaxis.get_tic_size(),
+                                        0)
+                else:
+                    context.rel_line_to(rect.width - yaxis.get_tic_size(), 0)
+                context.stroke()
+                
+    def get_show_horizontal_lines(self):
+        """
+        Returns True if horizontal grid lines are shown.
+        
+        (getter method for property 'show-horizontal-lines', see setter
+        method for details)
+        
+        @return: boolean
+        """
+        return self.get_property("show-horizontal-lines")
+        
+    def set_show_horizontal_lines(self, show):
+        """
+        Set whether to show horizontal grid lines.
+        
+        This is the setter method for the property
+        'show-horizontal-lines'.
+        Property type: gobject.TYPE_BOOLEAN
+        Property default value: True
+        
+        @type show: boolean
+        """
+        self.set_property("show-horizontal-lines", show)
+                
+    def get_show_vertical_lines(self):
+        """
+        Returns True if vertical grid lines are shown.
+        
+        (getter method for property 'show-vertical-lines', see setter
+        method for details)
+        
+        @return: boolean
+        """
+        return self.get_property("show-vertical-lines")
+        
+    def set_show_vertical_lines(self, show):
+        """
+        Set whether to show vertical grid lines.
+        
+        This is the setter method for the property
+        'show-vertical-lines'.
+        Property type: gobject.TYPE_BOOLEAN
+        Property default value: True
+        
+        @type show: boolean
+        """
+        self.set_property("show-vertical-lines", show)
+        
+    def get_line_style_horizontal(self):
+        """
+        Returns the line style for the horizontal grid lines.
+        
+        (getter method for property 'line-style-horizontal', see setter
+        method for details)
+        
+        @return: line style constant
+        """
+        return self.get_property("line-style-horizontal")
+        
+    def set_line_style_horizontal(self, style):
+        """
+        Sets the line style for the horizontal grid lines.
+        style has to be one of the following line style constants:
+         - pygtk_chart.LINE_STYLE_NONE = -1
+         - pygtk_chart.LINE_STYLE_SOLID = 0
+         - pygtk_chart.LINE_STYLE_DOTTED = 1
+         - pygtk_chart.LINE_STYLE_DASHED = 2
+         - pygtk_chart.LINE_STYLE_DASHED_ASYMMETRIC = 3
+         
+        This is the setter method for the property
+        'line-style-horizontal'.
+        Property type: gobject.TYPE_INT
+        Property minimum value: -1
+        Property maximum value: 3
+        Property default value: 0 (pygtk_chart.LINE_STYLE_SOLID)
+        
+        @type style: a line style constant
+        """
+        self.set_property("line-style-horizontal", style)
+        
+    def get_line_style_vertical(self):
+        """
+        Returns the line style for the vertical grid lines.
+        
+        (getter method for property 'line-style-vertical', see setter
+        method for details)
+        
+        @return: line style constant
+        """
+        return self.get_property("line-style-vertical")
+        
+    def set_line_style_vertical(self, style):
+        """
+        Sets the line style for the vertical grid lines.
+        style has to be one of the following line style constants:
+         - pygtk_chart.LINE_STYLE_NONE = -1
+         - pygtk_chart.LINE_STYLE_SOLID = 0
+         - pygtk_chart.LINE_STYLE_DOTTED = 1
+         - pygtk_chart.LINE_STYLE_DASHED = 2
+         - pygtk_chart.LINE_STYLE_DASHED_ASYMMETRIC = 3
+         
+        This is the setter method for the property
+        'line-style-vertical'.
+        Property type: gobject.TYPE_INT
+        Property minimum value: -1
+        Property maximum value: 3
+        Property default value: 0 (pygtk_chart.LINE_STYLE_SOLID)
+        
+        @type style: a line style constant
+        """
+        self.set_property("line-style-vertical", style)
+        
+    def get_color(self):
+        """
+        Returns the grid color.
+        
+        (getter method for property 'color', see setter method for
+        details)
+        
+        @return: gtk.gdk.COlOR.
+        """
+        return self.get_property("color")
+        
+    def set_color(self, color):
+        """
+        Set the color of the grid.
+        
+        This is the setter method for the property 'color'.
+        Property type: gobject.TYPE_PYOBJECT
+        Property default value: gtk.gdk.color_parse('#cccccc')
+        
+        @param color: new grid color
+        @type color: gtk.gdk.Color
+        """
+        self.set_property("color", color)
+
+
+class LineChartKey(ChartObject):
+    """
+    This class is used to display a simple key on a LineChart widget. You
+    don't need to create it yourself, every LineChart has an instance of
+    this class stored in LineChart.key.
+    """
+    
+    __gproperties__ = {"width": (gobject.TYPE_FLOAT, "relative width of key",
+                                    "The relative width of the key.",
+                                    0.1, 0.9, 0.4, gobject.PARAM_READWRITE),
+                        "position": (gobject.TYPE_INT, "key position",
+                                        "Position of the key.", 0, 3, 0,
+                                        gobject.PARAM_READWRITE),
+                        "line-length": (gobject.TYPE_INT, "sample line length",
+                                        "Length of the sample line.", 5, 25,
+                                        10, gobject.PARAM_READWRITE),
+                        "padding": (gobject.TYPE_INT, "key padding",
+                                    "key padding", 1, 25, 10,
+                                    gobject.PARAM_READWRITE),
+                        "opacity": (gobject.TYPE_FLOAT, "key opacity",
+                                    "Opacity of the key.", 0.0, 1.0, 0.75,
+                                    gobject.PARAM_READWRITE)}
+        
+    _width = 0.4
+    _position = KEY_POSITION_TOP_RIGHT
+    _line_length = 10
+    _padding = 10
+    _bg_opacity = 0.75
+    
+    def __init__(self):
+        super(LineChartKey, self).__init__()
+        self.set_visible(False)
+        
+    def _do_draw(self, context, rect, graph_list, color_set):
+        set_context_line_style(context, pygtk_chart.LINE_STYLE_SOLID)
+        color_set.reset()
+        
+        width = self._width * rect.width
+        height = 0
+        
+        context.push_group()
+        
+        cx = self._padding
+        cy = self._padding
+        context.move_to(0, 0)
+        context.set_source_rgb(0, 0, 0)
+        
+        i = 0
+        item_width = 0
+        for graph in graph_list:
             if not graph.get_visible(): continue
-            #draw the label
-            graph_label = label.Label((x + (width - label_width), y), graph.get_title(), anchor=label.ANCHOR_TOP_LEFT)
-            graph_label.set_max_width(label_width)
-            graph_label.draw(context, rect)
             
             #draw line
-            if graph.get_type() in [GRAPH_LINES, GRAPH_BOTH]:
-                lines = graph_label.get_line_count()
-                line_height = graph_label.get_real_dimensions()[1] / lines
+            context.move_to(cx, cy)
+            gc = graph.get_property("color")
+            
+            if gc == COLOR_AUTO:
+                gc = color_set.get_color()
+                
+            context.set_source_rgb(*color_gdk_to_cairo(gc))
+            if graph.get_line_style() != pygtk_chart.LINE_STYLE_NONE:
                 set_context_line_style(context, graph.get_line_style())
-                context.set_source_rgb(*color_gdk_to_cairo(graph.get_color()))
-                context.move_to(x + 6, y + line_height / 2)
-                context.rel_line_to(20, 0)
+                context.rel_line_to(self._line_length, 0)
                 context.stroke()
+            
             #draw point
-            if graph.get_type() in [GRAPH_POINTS, GRAPH_BOTH]:
-                lines = graph_label.get_line_count()
-                line_height = graph_label.get_real_dimensions()[1] / lines
-                context.set_source_rgb(*color_gdk_to_cairo(graph.get_color()))
-                if type(graph.get_point_style()) != gtk.gdk.Pixbuf:
-                    draw_point(context, x + 6 + 20, y + line_height / 2, graph.get_point_size(), graph.get_point_style())
-                else:
-                    draw_point_pixbuf(context, x + 6 + 20, y + line_height / 2, graph.get_point_style())
-                    
+            graph_draw_point(context, cx + self._line_length, cy,
+                                graph.get_point_size(), graph.get_point_style())
             
-            y += graph_label.get_real_dimensions()[1] + 6
+            #draw title
+            l = label.Label((cx + self._line_length + self._padding, cy - 8),
+                            graph.get_name())
+            l.set_anchor(label.ANCHOR_TOP_LEFT)
+            l.set_max_width(width - 3 * self._padding - self._line_length)
+            l.set_wrap(True)
+            l.draw(context, rect)
             
+            item_width = max(item_width,
+                                3 * self._padding + self._line_length + \
+                                l.get_real_dimensions()[0])
+            
+            if l.get_real_dimensions()[1] <= 10:
+                cy += 20
+            else:
+                cy += l.get_real_dimensions()[1]
+                cy += 10
+
+            i += 1
+        
+        width = min(width, item_width)
+        height = cy - 10
+        
+        group = context.pop_group()
+        
+        #place key
+        if self._position == KEY_POSITION_TOP_RIGHT:
+            x = rect.x + rect.width - width
+            y = rect.y
+        elif self._position == KEY_POSITION_TOP_LEFT:
+            x = rect.x
+            y = rect.y
+        elif self._position == KEY_POSITION_BOTTOM_LEFT:
+            x = rect.x
+            y = rect.y + rect.height - height
+        elif self._position == KEY_POSITION_BOTTOM_RIGHT:
+            x = rect.x + rect.width - width
+            y = rect.y + rect.height - height
+            
+        context.translate(x, y)
+        
+        context.set_source_rgba(1, 1, 1, self._bg_opacity)
+        context.rectangle(1, 1, width - 1, height - 1)
+        context.fill()
+        context.set_source(group)
+        context.rectangle(0, 0, width, height)
+        context.fill()
+        
+        context.translate(-x, -y)
+        
+    def do_get_property(self, property):
+        if property.name == "width":
+            return self._width
+        elif property.name == "position":
+            return self._position
+        elif property.name == "line-length":
+            return self._line_length
+        elif property.name == "padding":
+            return self._padding
+        elif property.name == "opacity":
+            return self._bg_opacity
+        else:
+            return super(LineChartKey, self).do_get_property(property)
+            
+    def do_set_property(self, property, value):
+        if property.name == "width":
+            self._width = value
+            self.emit("appearance-changed")
+        elif property.name == "position":
+            self._position = value
+            self.emit("appearance-changed")
+        elif property.name == "line-length":
+            self._line_length = value
+            self.emit("appearance-changed")
+        elif property.name == "padding":
+            self._padding = value
+            self.emit("appearance-changed")
+        elif property.name == "opacity":
+            self._bg_opacity = value
+            self.emit("appearance-changed")
+        else:
+            super(LineChartKey, self).do_set_property(property, value)
+            
+    def get_line_length(self):
+        """
+        Returns the length of sample lines.
+        
+        @return: int
+        """
+        return self.get_property("line-length")
+        
+    def set_line_length(self, length):
+        """
+        Set the length of sample lines drawn for graphs.
+        
+        @param length: new length
+        @type length: int in range [5, 25]
+        """
+        self.set_property("line-length", length)
+        
+    def get_opacity(self):
+        """
+        Returns the opacity of the key's background.
+        
+        @return: float
+        """
+        return self.get_property("opacity")
+        
+    def set_opacity(self, opacity):
+        """
+        Set the opacity of the key's background.
+        
+        @param opacity: the new opacity
+        @type opacity: float in range [0.0, 1.0]
+        """
+        self.set_property("opacity", opacity)
+        
+    def get_padding(self):
+        """
+        Returns the contents padding.
+        
+        @return: int
+        """
+        return self.get_property("padding")
+        
+    def set_padding(self, padding):
+        """
+        Set the amount of content padding.
+        
+        @param padding: new padding
+        @type padding: int in range [1, 25]
+        """
+        self.set_property("padding", padding)
+            
+    def get_position(self):
+        """
+        Returns a key position constant determining the key's position.
+        
+        @return: position constant
+        """
+        return self.get_property("position")
+        
+        
     def set_position(self, position):
         """
-        Set the position of the legend. position has to be one of these
-        position constants:
-         - line_chart.POSITION_TOP_RIGHT (default)
-         - line_chart.POSITION_BOTTOM_RIGHT
-         - line_chart.POSITION_BOTTOM_LEFT
-         - line_chart.POSITION_TOP_LEFT
+        Set the key's position. position has to be one of the following
+        constants:
         
-        @param position: the legend's position
+         - line_chart.KEY_POSITION_TOP_RIGHT
+         - line_chart.KEY_POSITION_TOP_LEFT
+         - line_chart.KEY_POSITION_BOTTOM_LEFT
+         - line_chart.KEY_POSITION_BOTTOM_RIGHT
+        
+        @param positon: new position
         @type position: one of the constants above.
         """
-        self.set_property("position", position)
-        self.emit("appearance_changed")
+        self.set_property("position", position)        
+            
+    def get_width(self):
+        """
+        Returns the relative width of the key.
+        
+        @return: float
+        """
+        return self.get_property("width")
+        
+    def set_width(self, width):
+        """
+        Set the relative width of the key.
+        
+        @param width: new relative width
+        @type width: float in range [0.0, 1.0]
+        """
+        self.set_property("width", width)
+
+
+class PeakMarker(ChartObject):
+    """
+    This class displays a small rectangle (with an optional label) that
+    points to a given position.
+    """
+    
+    __gproperties__ = {"xaxis": (gobject.TYPE_INT, "id of the xaxis to use",
+                                    "Id of the xaxis to use.",
+                                    1, 2, 1, gobject.PARAM_READWRITE),
+                        "yaxis": (gobject.TYPE_INT, "id of the yaxis to use",
+                                    "Id of the yaxis to use.",
+                                    1, 2, 1, gobject.PARAM_READWRITE),
+                        "color": (gobject.TYPE_PYOBJECT, "color",
+                                    "Marker color.", gobject.PARAM_READWRITE),
+                        "position": (gobject.TYPE_PYOBJECT, "position",
+                                        "Position of the marker", 
+                                        gobject.PARAM_READWRITE),
+                        "text": (gobject.TYPE_STRING, "marker label",
+                                    "Marker label.", "",
+                                    gobject.PARAM_READWRITE)}
+    
+    _position = None
+    _text = ""
+    _xaxis = 1
+    _yaxis = 1
+    _color = gtk.gdk.Color()
+    
+    def __init__(self, pos, text="", xaxis=1, yaxis=1):
+        super(PeakMarker, self).__init__()
+        self._position = pos
+        self._text = text
+        self._xaxis = xaxis
+        self._yaxis = yaxis
+        
+    def do_get_property(self, property):
+        if property.name == "xaxis":
+            return self._xaxis
+        elif property.name == "yaxis":
+            return self._yaxis
+        elif property.name == "color":
+            return self._color
+        elif property.name == "position":
+            return self._position
+        elif property.name == "text":
+            return self._text
+        else:
+            super(PeakMarker, self).do_get_property(property)
+            
+    def do_set_property(self, property, value):
+        if property.name == "xaxis":
+            self._xaxis = value
+        elif property.name == "yaxis":
+            self._yaxis = value
+        elif property.name == "color":
+            self._color = value
+        elif property.name == "position":
+            self._position = value
+        elif property.name == "text":
+            self._text = value
+        else:
+            super(PeakMarker, self).do_set_property(property, value)
+            
+    def _do_draw(self, context, rect, xrange, yrange, logscale):
+        if self._position == None: return
+        ppu_x = float(rect.width) / abs(xrange[0] - xrange[1])
+        ppu_y = float(rect.height) / abs(yrange[0] - yrange[1])
+        
+        x, y = self._position
+
+        if logscale[0]: x = math.log10(x)
+        if logscale[1]: y = math.log10(y)
+        
+        posx = rect.x + ppu_x * (x - xrange[0])
+        posy = rect.y + rect.height - ppu_y * (y - yrange[0]) - 2
+        
+        context.set_source_rgb(*color_gdk_to_cairo(self._color))
+        context.move_to(posx, posy)
+        context.rel_line_to(5, -5)
+        context.rel_line_to(-10, 0)
+        context.close_path()
+        context.fill()
+        context.set_source_rgb(0, 0, 0)
+        
+        if self._text != "":
+            l = label.Label((posx, posy - 10), self._text, anchor=label.ANCHOR_LEFT_CENTER)
+            l.set_rotation(90)
+            l.set_wrap(False)
+            l.draw(context, rect)
+            
+    def get_axes(self):
+        """
+        Returns a pair of integers specifing the marker's axis affinties.
+        
+        @return: pair of int
+        """
+        return self.get_property("xaxis"), self.get_property("yaxis")
+        
+    def set_axes(self, xaxis, yaxis):
+        """
+        Set the markers axis affinities. xaxis and yaxis specify which
+        axes to use (1 or 2).
+        
+        @param xaxis: id of the x-axis
+        @type xaxis: int, 1 or 2
+        @param yaxis: id of the y-axis
+        @type yaxis: int, 1 or 2
+        """
+        self.set_property("xaxis", xaxis)
+        self.set_property("yaxis", yaxis)
+        self.emit("appearance-changed")
+    
+    def get_color(self):
+        """
+        Returns the current color of the marker.
+        
+        @return: gtk.gdk.Color
+        """
+        return self.get_property("color")
+        
+    def set_color(self, color):
+        """
+        The a new color for the marker.
+        
+        @param color: the new color
+        @type color: gtk.gdk.Color
+        """
+        self.set_property("color", color)
+        self.emit("appearance-changed")
         
     def get_position(self):
         """
-        Returns the position of the legend. See L{set_position} for
-        details.
+        Returns the current position of the marker.
         
-        @return: a position constant.
+        @return: a (x, y) pair or None
         """
         return self.get_property("position")
+        
+    def set_position(self, pos):
+        """
+        Set the position of the marker to pos = (x, y).
+        
+        @param pos: new position
+        @type pos: (x, y) pair.
+        """
+        self.set_property("position", pos)
+        self.emit("appearance-changed")
+        
+    def get_text(self):
+        """
+        Return the current label text for the marker.
+        
+        @return: string
+        """
+        return self.get_property("text")
+        
+    def set_text(self, txt):
+        """
+        Set a new text for the marker label.
+        
+        @param txt: the new text
+        @type txt: string
+        """
+        self.set_proeprty("text", txt)
+        self.emit("appearance-changed")
